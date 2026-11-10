@@ -130,7 +130,17 @@
   const dismissed = new WeakSet();
   const dismissedSrc = new Set();
   const isDismissed = (v) => dismissed.has(v) || (v.currentSrc && dismissedSrc.has(v.currentSrc));
-  let allowed = null; // asked once per page: may it show here?
+  // May it show here? The app's answer (Options: the button on, the site not listed), asked
+  // again when older than ASK_MS, so a change in Options reaches a page already open (#532: one
+  // that never reloads, as YouTube's, kept the button for good). `never`: this page's own
+  // "Never on this site".
+  let allowed = null;
+  let askedAt = 0;
+  let asking = null;
+  let never = false;
+  let placed = false;
+  const ASK_MS = 5000;
+  const answered = () => allowed !== null && Date.now() - askedAt < ASK_MS;
   let place = { x: 1, y: 0 }; // where on the edge: fractions of the room, top right by default
   let chosen = false; // the user put it where it is (dragged it, on this site): theirs, never moved for a page's control
   let auto = { v: null, at: null, t: 0 }; // the spot found for this video, kept for a moment
@@ -471,29 +481,42 @@ button:focus-visible { outline: 2px solid #2a78d6; outline-offset: -2px; }
 
   function look() {
     scan = 0;
-    if (dragging || allowed === false) return;
+    if (dragging || never || (allowed === false && answered())) return;
     const v = videoAt(pointer.x, pointer.y);
     if (!v) return;
-    if (allowed === null) return void ask().then(() => allowed && look());
+    if (!answered()) return void ask().then(() => allowed && look());
     show(v);
   }
 
-  async function ask() {
-    if (allowed !== null) return;
-    allowed = false; // until answered: one question per page
-    const r = await send({ type: "panel" });
-    allowed = Boolean(r && r.on);
-    if (allowed) {
-      try {
-        const { positions } = await ext.storage.local.get({ positions: {} });
-        if (positions[host]) {
-          place = snap(positions[host]);
-          chosen = true;
-        }
-      } catch {
-        // Default spot.
-      }
+  // One question at a time; while it is out, the button waits for its answer.
+  function ask() {
+    if (never) {
+      allowed = false;
+      return Promise.resolve();
     }
+    if (answered()) return Promise.resolve();
+    asking = asking || send({ type: "panel" }).then(async (r) => {
+      allowed = !never && Boolean(r && r.on);
+      askedAt = Date.now();
+      // Switched off meanwhile: gone now, unless the menu or a drag has it in hand.
+      if (!allowed && video && !menuOpen && !dragging) {
+        video = null;
+        hide(true);
+      }
+      if (allowed && !placed) {
+        placed = true;
+        try {
+          const { positions } = await ext.storage.local.get({ positions: {} });
+          if (positions[host]) {
+            place = snap(positions[host]);
+            chosen = true;
+          }
+        } catch {
+          // Default spot.
+        }
+      }
+    }).finally(() => (asking = null));
+    return asking;
   }
 
   // ---- acting ---------------------------------------------------------------------------------
@@ -567,6 +590,7 @@ button:focus-visible { outline: 2px solid #2a78d6; outline-offset: -2px; }
       return hide(true);
     }
     if (act === "never") {
+      never = true;
       allowed = false;
       video = null;
       hide(true);
@@ -676,6 +700,7 @@ button:focus-visible { outline: 2px solid #2a78d6; outline-offset: -2px; }
     removeEventListener("pointermove", onMove, true);
     removeEventListener("keydown", onTab, true);
     root.remove();
+    never = true;
     allowed = false;
     video = null;
   }

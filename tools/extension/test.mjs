@@ -134,8 +134,8 @@ function fakeApi({
           return { ok: true, version: "0.2.5", types, capture: true, excludedSites: "*.update.microsoft.com", excludedAddresses: [], opened: true, ...rules };
         }
         calls.push(["native", name, m]);
-        // The video button: "may it show" follows `panelOn`.
-        if (m.panel) return { ok: panelOn !== false };
+        // The video button: "may it show" follows `panelOn` (a function: the app's answer now).
+        if (m.panel) return { ok: typeof panelOn === "function" ? panelOn(m) : panelOn !== false };
         // A notice of a download left alone (#208): an older host, which knows none, takes it
         // for an address it can't download (`noticeReply`).
         if (m.declined) return noticeReply || { ok: true };
@@ -231,7 +231,8 @@ async function fakeFetch(url, opts) {
 const complaints = [];
 const quietConsole = { ...console, error: (...a) => complaints.push(["error", ...a]), warn: (...a) => complaints.push(["warn", ...a]) };
 
-function load(api, firefox) {
+// `extra`: more of the script's globals (a `Date` whose clock the test moves).
+function load(api, firefox, extra = {}) {
   const ctx = {
     fetch: fakeFetch,
     navigator: { userAgent: "UA", userAgentData: { brands: [{ brand: "Chromium" }, { brand: "Brave" }] } },
@@ -245,6 +246,7 @@ function load(api, firefox) {
   };
   if (firefox) ctx.browser = api;
   else ctx.chrome = api;
+  Object.assign(ctx, extra);
   vm.runInNewContext(code, ctx);
 }
 
@@ -675,6 +677,44 @@ const ok = (what) => {
   await new Promise((r) => listeners.message({ type: "video", src: "" }, sender, r));
   assert.ok(calls.some((c) => c[0] === "cookies" && c[1].url === "https://other.test/x/main.mpd"), "the button: the stream's cookies");
   ok("#155: the right-click menu on a stream's player sends its manifest; cookies of the stream");
+}
+// #532: Options changed while a page with a video is open: the app's answer is kept a few
+// seconds, not a minute, so the button follows (the page asks again: video.js ASK_MS). An
+// embedded player asks with its tab's address, so the site in the address bar counts too.
+{
+  const clock = { t: Date.now() };
+  class FakeDate extends Date {
+    static now() {
+      return clock.t;
+    }
+  }
+  let appSays = true;
+  const { api, calls, listeners } = fakeApi({ firefox: false, panelOn: () => appSays });
+  load(api, false, { Date: FakeDate });
+  const embed = { id: "ours", url: "https://tube.test/embed/1", frameId: 3, tab: { url: "https://blog.test/post" } };
+  const top = { id: "ours", url: "https://tube.test/watch", frameId: 0, tab: { url: "https://tube.test/watch" } };
+  const ask = (sender) =>
+    new Promise((r) => listeners.message({ type: "panel" }, sender, (v) => r(JSON.parse(JSON.stringify(v)))));
+  assert.deepEqual(await ask(embed), { on: true });
+  const asked = () => natives(calls).filter((m) => m.panel);
+  assert.equal(asked()[0].referrer, "https://blog.test/post", "the tab's address with an embedded player's question");
+  assert.deepEqual(await ask(top), { on: true });
+  assert.equal(asked()[1].referrer, undefined, "none for the tab's own page");
+  appSays = false;
+  clock.t += 1000;
+  assert.deepEqual(await ask(top), { on: true }, "kept a moment (the page's frames ask together)");
+  assert.equal(asked().length, 2);
+  clock.t += 5000;
+  assert.deepEqual(await ask(top), { on: false }, "switched off in Options: the next question has it");
+  assert.deepEqual(await ask(embed), { on: false });
+  appSays = true;
+  clock.t += 6000;
+  assert.deepEqual(await ask(embed), { on: true }, "and on again");
+  // "Never on this site" from the embed: off at once, in its tab and in any other.
+  await new Promise((r) => listeners.message({ type: "hide-site" }, embed, r));
+  assert.deepEqual(await ask(embed), { on: false });
+  assert.deepEqual(await ask({ ...embed, tab: { url: "https://news.test/" } }), { on: false }, "whatever the tab");
+  ok("#532: the video button follows Options within seconds; an embed asks with its tab's address");
 }
 {
   const { api, listeners } = fakeApi({ firefox: true, panelOn: false });

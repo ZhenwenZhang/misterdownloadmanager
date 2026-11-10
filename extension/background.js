@@ -1866,17 +1866,25 @@ async function injectOpenTabs() {
 // ---- messages from the page (video.js, page.js) and the popup (popup.js) -------------------
 
 // The download button over videos asks: may it show on this page, the button was clicked, its
-// menu. The app decides through the native host; its answer for a site is kept a minute (one
-// question per page load at most). A failure to reach it isn't kept.
+// menu. The app decides through the native host, from Options as saved now; its answer for a
+// site is kept a few seconds (the page's frames ask together, and each page asks again when its
+// answer is older: video.js ASK_MS), so a change in Options reaches the pages already open
+// (#532: it was kept a minute, and by the page for good). A failure to reach it isn't kept.
+// `top`: the tab's address, when the frame asking is another page's (a player embedded from
+// another site): the button stays off there too when the tab's site is listed.
+const PANEL_KEEP_MS = 5000;
 const panelCache = new Map();
-async function panelOn(page) {
+async function panelOn(page, top) {
   // The host name without a port: as video.js names the site, and as the app matches sites.
   const site = new URL(page).hostname;
-  forget(panelCache, 60000);
-  const kept = panelCache.get(site);
+  const tabSite = top ? new URL(top).hostname : "";
+  const key = tabSite && tabSite !== site ? `${site} ${tabSite}` : site;
+  forget(panelCache, PANEL_KEEP_MS);
+  if (panelCache.get(site)?.hidden) return false;
+  const kept = panelCache.get(key);
   if (kept) return kept.on;
-  const reply = await native({ panel: true, url: page });
-  if (reply.ok || !reply.why) panelCache.set(site, { on: Boolean(reply.ok), at: Date.now() });
+  const reply = await native({ panel: true, url: page, ...(key !== site ? { referrer: top } : {}) });
+  if (reply.ok || !reply.why) panelCache.set(key, { on: Boolean(reply.ok), at: Date.now() });
   return Boolean(reply.ok);
 }
 
@@ -1949,7 +1957,10 @@ async function videoAddress(m, page, sender) {
 async function pageMessage(m, sender) {
   const page = senderPage(sender);
   const tab = sender.tab || {};
-  if (m.type === "panel") return { on: page ? await panelOn(page) : false };
+  if (m.type === "panel") {
+    const top = tab.url && /^https?:/i.test(tab.url) ? tab.url : "";
+    return { on: page ? await panelOn(page, top) : false };
+  }
   if (m.type === "link" && typeof m.url === "string") {
     const name = typeof m.name === "string" ? m.name.split(/[\\/]/).pop().slice(0, 255) : "";
     return link(m.url, page || "", Boolean(tab.incognito), name);
@@ -1989,7 +2000,8 @@ async function pageMessage(m, sender) {
   }
   if (m.type === "hide-site" && page) {
     const host = new URL(page).hostname;
-    panelCache.set(host, { on: false, at: Date.now() });
+    // Off at once on this site, whatever the tab around it, while the app saves it.
+    panelCache.set(host, { on: false, hidden: true, at: Date.now() });
     const reply = await native({ hideSite: host });
     return { ok: Boolean(reply.ok) };
   }

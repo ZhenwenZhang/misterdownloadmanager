@@ -23,7 +23,8 @@
 // .m3u8 or .mpd, served as text/plain or octet-stream, #171), sniffed (#171 without yt-dlp: such
 // streams found only when asked, by the button and the media list, a text decoy never), media (the
 // toolbar button's list of the media a tab loaded: streams, files, a protected stream; #38), video (shown, clicked, dragged,
-// kept; "never on the site" in the last browser), videoFocus (mouse idle/fullscreen and keyboard
+// kept; "never on the site" in the last browser), panelOptions (the button follows Options in
+// an open tab: off, on, the site listed; #532), videoFocus (mouse idle/fullscreen and keyboard
 // focus, #480), start (MDM not running: the host starts it),
 // remote (Send downloads to → Another MDM, #157: paired from the popup, a link downloaded by a
 // headless MDM; E2E_REMOTE_URL for one running elsewhere, such as the Docker image: remoteServer).
@@ -1099,6 +1100,58 @@ async function videoButton(session, never) {
   return "shown, clicked (the video's file), dragged, kept, never on the site";
 }
 
+// How long the page and the extension keep the app's "may it show here" (video.js ASK_MS,
+// background.js PANEL_KEEP_MS), with room for the question.
+const PANEL_KEPT_MS = 5000 + 1500;
+
+// Options → General → Download panels, changed as its OK does: the settings saved in
+// downloads.json, which the host reads at each question. Changed with the app stopped, so its own
+// next save doesn't put them back.
+async function panelSettings(change) {
+  await stopApp();
+  const file = path.join(data, "downloads.json");
+  const saved = JSON.parse(fs.readFileSync(file, "utf8").replace(/^﻿/, ""));
+  Object.assign(saved.settings, change);
+  fs.writeFileSync(file, JSON.stringify(saved));
+  await startApp();
+}
+
+// #532: the button follows Options in a tab already open (no reload: YouTube never reloads),
+// switched off, on again, and off on the site; and after a reload.
+async function videoButtonFollowsOptions(session) {
+  const page = `${LAB}/page?video=${encodeURIComponent("/gen/1M/clip.mp4")}`;
+  await session.navigate(page);
+  const v = await rect(session, "#video");
+  const away = async () => {
+    await session.mouse(5, 5);
+    await sleep(PANEL_KEPT_MS);
+  };
+  const done = [];
+  try {
+    if (!(await hover(session, v))) throw new Error("no button over the video");
+    await panelSettings({ video_panel: false });
+    await away();
+    if (await hover(session, v)) throw new Error("switched off in Options: the button still shows in the open tab");
+    done.push("off: gone in the open tab");
+    await session.mouse(5, 5);
+    await session.navigate(page);
+    if (await hover(session, v)) throw new Error("switched off in Options: the button shows after a reload");
+    done.push("and after a reload");
+    await panelSettings({ video_panel: true });
+    await away();
+    if (!(await hover(session, v))) throw new Error("switched on again: no button in the open tab");
+    done.push("on again: back in the open tab");
+    await panelSettings({ video_panel_sites: "127.0.0.1" });
+    await away();
+    if (await hover(session, v)) throw new Error("the site listed in Options: the button still shows in the open tab");
+    done.push("the site listed: gone in the open tab");
+  } finally {
+    await session.mouse(5, 5);
+    await panelSettings({ video_panel: true, video_panel_sites: "" });
+  }
+  return done.join("; ");
+}
+
 // ---- the cases ---------------------------------------------------------------------------------
 
 class Skip extends Error {}
@@ -1894,6 +1947,11 @@ const CASES = {
     const want = `${LAB}/page?video=moved`;
     if (address !== want) throw new Error(`the video window got ${address}, not ${want}`);
     return `sent ${address.replace(LAB, "")}`;
+  },
+
+  // Before `video`, which ends with "Never on this site" for the lab in the last browser.
+  async panelOptions(t) {
+    return videoButtonFollowsOptions(t.session);
   },
 
   async video(t) {

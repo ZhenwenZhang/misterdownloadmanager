@@ -222,16 +222,22 @@ impl CaptureRules {
 impl CaptureRules {
     /// May the download button show over videos on `page` (its address) in `browser`?
     /// Integration on, that browser captured, the button on and the site not one it stays off.
-    pub fn panel_on(&self, page: &str, browser: &str) -> bool {
-        self.captures(browser) && self.video_panel && !self.panel_hidden_on(page)
+    /// `top`: the tab's address when `page` is a frame of another page's (a player embedded from
+    /// another site): the site in the address bar is the one a person lists (#532).
+    pub fn panel_on(&self, page: &str, top: Option<&str>, browser: &str) -> bool {
+        self.captures(browser)
+            && self.video_panel
+            && !self.panel_hidden_on(page)
+            && !top.is_some_and(|t| !t.is_empty() && self.panel_hidden_on(t))
     }
 
-    /// Is `page` (an address) on a site the button stays off?
+    /// Is `page` (an address) on a site the button stays off? A name without `*.` takes its
+    /// subdomains too (#532: `youtube.com` listed, the button still showed on www.youtube.com).
     pub fn panel_hidden_on(&self, page: &str) -> bool {
         let host = host_of(page);
         self.video_panel_sites
             .split_whitespace()
-            .any(|p| host_matches(&host, p))
+            .any(|p| host_matches(&host, p) || host_matches(&host, &format!("*.{p}")))
     }
 }
 
@@ -487,27 +493,45 @@ mod tests {
             video_panel_sites: "*.example.com tube.test".into(),
             ..CaptureRules::default()
         };
-        assert!(r.panel_on("https://videos.site/watch?v=1", CHROME));
+        assert!(r.panel_on("https://videos.site/watch?v=1", None, CHROME));
         assert!(
-            !r.panel_on("https://www.example.com/v", CHROME),
+            !r.panel_on("https://www.example.com/v", None, CHROME),
             "a listed site"
         );
         assert!(
-            !r.panel_on("https://example.com/v", CHROME),
+            !r.panel_on("https://example.com/v", None, CHROME),
             "*. takes the domain too"
         );
-        assert!(!r.panel_on("https://TUBE.test/v", FIREFOX));
+        assert!(!r.panel_on("https://TUBE.test/v", None, FIREFOX));
         r.browsers = vec![("Mozilla Firefox".into(), false)];
         assert!(
-            !r.panel_on("https://videos.site/", FIREFOX),
+            !r.panel_on("https://videos.site/", None, FIREFOX),
             "a browser not captured"
         );
-        assert!(r.panel_on("https://videos.site/", CHROME));
+        assert!(r.panel_on("https://videos.site/", None, CHROME));
         r.video_panel = false;
-        assert!(!r.panel_on("https://videos.site/", CHROME));
+        assert!(!r.panel_on("https://videos.site/", None, CHROME));
+        // #532: a name without `*.` takes its subdomains (www. above all); a player embedded
+        // from another site follows the tab's site.
+        r.video_panel = true;
+        r.video_panel_sites = "quiet.test".into();
+        assert!(!r.panel_on("https://www.quiet.test/v", None, CHROME));
+        assert!(!r.panel_on("https://quiet.test/v", None, CHROME));
+        assert!(r.panel_on("https://notquiet.test/v", None, CHROME));
+        assert!(!r.panel_on(
+            "https://videos.site/embed/1",
+            Some("https://www.quiet.test/post"),
+            CHROME
+        ));
+        assert!(r.panel_on(
+            "https://videos.site/embed/1",
+            Some("https://blog.site/"),
+            CHROME
+        ));
+        assert!(r.panel_on("https://videos.site/embed/1", Some(""), CHROME));
         r.video_panel = true;
         r.advanced_integration = false;
-        assert!(!r.panel_on("https://videos.site/", CHROME));
+        assert!(!r.panel_on("https://videos.site/", None, CHROME));
     }
 
     #[test]
