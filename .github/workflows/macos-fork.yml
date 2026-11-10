@@ -15,6 +15,15 @@ on:
     # Daily, 06:17 Beijing (22:17 UTC the day before).
     - cron: "17 22 * * *"
   workflow_dispatch:
+    inputs:
+      skip_upstream:
+        description: "Build the branch as it is (do not merge upstream)"
+        type: boolean
+        default: false
+      force:
+        description: "Release this commit even when it was already released"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -30,6 +39,8 @@ jobs:
     timeout-minutes: 150
     env:
       GH_TOKEN: ${{ github.token }}
+      SKIP_UPSTREAM: ${{ inputs.skip_upstream }}
+      FORCE: ${{ inputs.force }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -40,6 +51,11 @@ jobs:
         id: sync
         run: |
           set -euo pipefail
+          if [ "${SKIP_UPSTREAM:-false}" = "true" ]; then
+            echo "upstream merge skipped by request"
+            echo "merged=yes" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git remote add upstream https://github.com/anefzaoui/misterdownloadmanager.git 2>/dev/null || true
@@ -91,6 +107,11 @@ jobs:
         id: released
         run: |
           set -euo pipefail
+          if [ "${FORCE:-false}" = "true" ]; then
+            echo "skip=no" >> "$GITHUB_OUTPUT"
+            echo "release forced by request"
+            exit 0
+          fi
           last="$(gh release list --limit 1 --json tagName --jq '.[0].tagName // empty')"
           if [ -n "$last" ] && [ "$(git rev-list -n1 "$last")" = "$(git rev-parse HEAD)" ]; then
             echo "skip=yes" >> "$GITHUB_OUTPUT"
