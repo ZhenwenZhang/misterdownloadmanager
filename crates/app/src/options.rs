@@ -302,39 +302,62 @@ impl OptionsDialog {
     /// `Done(settings)` on OK.
     pub fn show(&mut self, ctx: &egui::Context, downloads: &std::path::Path) -> Outcome<Settings> {
         let modal = self.sub.is_some() || self.cat_edit.is_some() || self.restore_ask.is_some();
+        // macOS settings use a sidebar, the Windows dialog keeps its two rows of tabs.
+        let mac = winui::mac_look();
+        let bar = if mac { 150.0 } else { 0.0 };
+        let client = [430.0 + bar, 506.0];
         let outcome = window(
             ctx,
             "options",
             "Mister Download Manager Configuration",
-            [430.0, 506.0],
+            client,
             false,
             LIGHT_BG(),
             |ui, o| {
+                let content = o + vec2(bar, 0.0);
                 // Ctrl+Tab through the pages in the tabs' order (Archives, 10, came last).
                 const ORDER: [usize; 12] = [0, 1, 2, 3, 4, 11, 5, 6, 7, 8, 9, 10];
                 let at = ORDER.iter().position(|p| *p == self.page).unwrap_or(0);
                 let by_key = winui::tab_keys(ui, ORDER.len(), at).map(|i| ORDER[i]);
-                if let Some(p) = tabs(ui, o, self.page).or(by_key) {
+                let picked = if mac {
+                    sidebar(ui, o, self.page)
+                } else {
+                    tabs(ui, o, self.page)
+                };
+                if let Some(p) = picked.or(by_key) {
                     self.page = p;
                 }
-                match self.page {
-                    0 => self.general(ui, o),
-                    1 => self.file_types(ui, o),
-                    2 => self.save_to(ui, o, downloads),
-                    3 => self.downloads(ui, o),
-                    4 => self.connection(ui, o),
-                    5 => self.proxy(ui, o),
-                    6 => self.logins(ui, o),
-                    7 => self.accounts(ui, o),
-                    9 => self.regional(ui, o),
-                    10 => self.archives(ui, o),
-                    REMOTE_PAGE => self.remote_page(ui, o),
-                    8 => self.sounds(ui, o),
-                    _ => self.regional(ui, o),
+                if mac {
+                    ui.painter().vline(
+                        o.x + bar,
+                        egui::Rangef::new(o.y + 8.0, o.y + 498.0),
+                        egui::Stroke::new(1.0, winui::HEADER_LINE()),
+                    );
                 }
+                let po = content;
+                match self.page {
+                    0 => self.general(ui, po),
+                    1 => self.file_types(ui, po),
+                    2 => self.save_to(ui, po, downloads),
+                    3 => self.downloads(ui, po),
+                    4 => self.connection(ui, po),
+                    5 => self.proxy(ui, po),
+                    6 => self.logins(ui, po),
+                    7 => self.accounts(ui, po),
+                    9 => self.regional(ui, po),
+                    10 => self.archives(ui, po),
+                    REMOTE_PAGE => self.remote_page(ui, po),
+                    8 => self.sounds(ui, po),
+                    _ => self.regional(ui, po),
+                }
+                let (ok_x, help_x) = if mac {
+                    (client[0] - 16.0 - 73.0, client[0] - 16.0 - 73.0 * 2.0 - 8.0)
+                } else {
+                    (269.0, 350.0)
+                };
                 let ok = winui::button_light(
                     ui,
-                    r(o, 269.0, 477.0, 73.0, 21.0),
+                    r(o, ok_x, 477.0, 73.0, 21.0),
                     "OK",
                     ButtonKind::Default,
                     false,
@@ -342,7 +365,7 @@ impl OptionsDialog {
                 .clicked();
                 if winui::button_light(
                     ui,
-                    r(o, 350.0, 477.0, 73.0, 21.0),
+                    r(o, help_x, 477.0, 73.0, 21.0),
                     // i18n: noun: button that opens the help
                     "Help",
                     ButtonKind::Normal,
@@ -1002,21 +1025,24 @@ impl OptionsDialog {
             ButtonKind::Disabled,
             false,
         );
-        winui::checkbox_light(
-            ui,
-            o + vec2(24.0, 120.0),
-            &mut s.show_start_dialog,
-            "Show start download dialog",
-            true,
-        );
-        let on = s.show_start_dialog;
-        winui::checkbox_light(
-            ui,
-            o + vec2(50.0, 141.0),
-            &mut s.only_add_to_queue,
-            "Do not start downloading, only add files to the queue",
-            !on,
-        );
+        #[cfg(not(target_os = "macos"))]
+        {
+            winui::checkbox_light(
+                ui,
+                o + vec2(24.0, 120.0),
+                &mut s.show_start_dialog,
+                "Show start download dialog",
+                true,
+            );
+            let on = s.show_start_dialog;
+            winui::checkbox_light(
+                ui,
+                o + vec2(50.0, 141.0),
+                &mut s.only_add_to_queue,
+                "Do not start downloading, only add files to the queue",
+                !on,
+            );
+        }
         winui::checkbox_light(
             ui,
             o + vec2(24.0, 160.0),
@@ -1032,6 +1058,7 @@ impl OptionsDialog {
             LIGHT_TEXT(),
         );
         winui::etched_h(&p, o.x + 21.0, o.y + 198.0, 381.0);
+        #[cfg(not(target_os = "macos"))]
         winui::checkbox_light(
             ui,
             o + vec2(24.0, 212.0),
@@ -3949,6 +3976,66 @@ fn tab_row(
 }
 
 /// The two-row tab strip and the page frame; returns the page clicked.
+/// The macOS settings window lists its pages down the left side, one page at a time.
+fn sidebar(ui: &mut Ui, o: Pos2, page: usize) -> Option<usize> {
+    // The order Ctrl+Tab walks, and the order the old tab rows read in.
+    const ORDER: [usize; 12] = [0, 1, 2, 3, 4, 11, 5, 6, 7, 8, 9, 10];
+    let mut clicked = None;
+    let mut y = 12.0;
+    for i in ORDER {
+        let sel = i == page;
+        let row = Rect::from_min_size(o + vec2(8.0, y), vec2(134.0, 26.0));
+        let resp = ui.interact(
+            winui::rect(row),
+            egui::Id::unique(("opt-side", i)),
+            winui::pointer_only(),
+        );
+        let label = crate::i18n::t(page_label(i));
+        winui::expose(&resp, egui::Role::Button, label, true, Some(sel));
+        let p = ui.painter();
+        if sel {
+            p.rect_filled(winui::rect(row), 6.0, winui::SELECTION());
+        } else if resp.hovered() {
+            p.rect_filled(winui::rect(row), 6.0, winui::TAB_HOT());
+        }
+        p.text(
+            o + vec2(20.0, y + 13.0),
+            egui::Align2::LEFT_CENTER,
+            label,
+            winui::tahoma(),
+            if sel {
+                egui::Color32::WHITE
+            } else {
+                winui::LIGHT_TEXT()
+            },
+        );
+        if resp.clicked() {
+            clicked = Some(i);
+        }
+        y += 30.0;
+    }
+    clicked
+}
+
+/// The name of one settings page, as the tabs and the sidebar write it.
+fn page_label(page: usize) -> &'static str {
+    match page {
+        0 => crate::i18n::mark("General"),
+        1 => crate::i18n::mark("File types"),
+        2 => crate::i18n::mark("Save to"),
+        3 => crate::i18n::mark("Downloads"),
+        4 => crate::i18n::mark("Connection"),
+        5 => crate::i18n::mark("Proxy / Socks"),
+        6 => crate::i18n::mark("Sites Logins"),
+        7 => crate::i18n::mark("Accounts"),
+        8 => crate::i18n::mark("Sounds"),
+        9 => crate::i18n::mark("Regional"),
+        10 => crate::i18n::mark("Archives"),
+        11 => crate::i18n::mark("Remote"),
+        _ => crate::i18n::mark("General"),
+    }
+}
+
 fn tabs(ui: &mut Ui, o: Pos2, page: usize) -> Option<usize> {
     // (page, label, x0, x1, label x): the rows never move sideways, only swap front and back.
     // Remote (#141, ours) joins the first row, which is sized by its labels since.
@@ -3991,6 +4078,7 @@ fn tabs(ui: &mut Ui, o: Pos2, page: usize) -> Option<usize> {
     ];
     let p = ui.painter().clone();
     let border = winui::HEADER_LINE();
+    let mac = winui::mac_look();
     let (g, pr) = (tab_row(&p, &G, false), tab_row(&p, &P, false));
     let first_row = page < 5 || page == REMOTE_PAGE;
     let (front, back): (&[_], &[_]) = if first_row { (&g, &pr) } else { (&pr, &g) };
@@ -4055,48 +4143,77 @@ fn tabs(ui: &mut Ui, o: Pos2, page: usize) -> Option<usize> {
                 }
             }
         }
-        let face = if sel {
-            LIGHT_PAGE()
-        } else if resp.hovered() {
-            winui::TAB_HOT()
+        if mac {
+            // macOS: flat tab titles, the chosen one in the accent with an underline.
+            if resp.hovered() && !sel {
+                fill(
+                    &p,
+                    o.x + x0 + 2.0,
+                    o.y + top,
+                    o.x + x1 - 1.0,
+                    o.y + top + 16.0,
+                    winui::TAB_HOT(),
+                );
+            }
+            if sel {
+                fill(
+                    &p,
+                    o.x + x0 + 4.0,
+                    o.y + top + 16.0,
+                    o.x + x1 - 4.0,
+                    o.y + top + 17.0,
+                    crate::theme::colors().accent,
+                );
+            }
         } else {
-            winui::TAB_UNSELECTED()
-        };
-        fill(&p, o.x + x0, o.y + top, o.x + x1, o.y + bottom, face);
-        fill(
-            &p,
-            o.x + x0 + 1.0,
-            o.y + top,
-            o.x + x1 - 1.0,
-            o.y + top,
-            border,
-        );
-        fill(
-            &p,
-            o.x + x0,
-            o.y + top + 1.0,
-            o.x + x0,
-            o.y + bottom,
-            border,
-        );
-        fill(
-            &p,
-            o.x + x1,
-            o.y + top + 1.0,
-            o.x + x1,
-            o.y + bottom,
-            border,
-        );
+            let face = if sel {
+                LIGHT_PAGE()
+            } else if resp.hovered() {
+                winui::TAB_HOT()
+            } else {
+                winui::TAB_UNSELECTED()
+            };
+            fill(&p, o.x + x0, o.y + top, o.x + x1, o.y + bottom, face);
+            fill(
+                &p,
+                o.x + x0 + 1.0,
+                o.y + top,
+                o.x + x1 - 1.0,
+                o.y + top,
+                border,
+            );
+            fill(
+                &p,
+                o.x + x0,
+                o.y + top + 1.0,
+                o.x + x0,
+                o.y + bottom,
+                border,
+            );
+            fill(
+                &p,
+                o.x + x1,
+                o.y + top + 1.0,
+                o.x + x1,
+                o.y + bottom,
+                border,
+            );
+        }
         // A translated row too wide for the strip has narrower tabs (`tab_row`): their labels are
         // cut with "..." and shown whole on hover.
         let full = crate::i18n::t(label);
+        let ink = if mac && sel {
+            crate::theme::colors().accent
+        } else {
+            LIGHT_TEXT()
+        };
         let shown = winui::ellipsize(&p, &winui::tahoma(), full, x1 - x0 - 6.0);
         if shown == full {
-            text(&p, o.x + lx, o.y + base, full, LIGHT_TEXT());
+            text(&p, o.x + lx, o.y + base, full, ink);
         } else {
             let w = winui::text_width(&p, &shown);
             let lx = x0 + ((x1 - x0 - w) / 2.0).floor();
-            let rc = text(&p, o.x + lx, o.y + base, &shown, LIGHT_TEXT());
+            let rc = text(&p, o.x + lx, o.y + base, &shown, ink);
             winui::full_on_hover(ui, rc, ("opt-tab-label", i), full);
         }
         winui::show_focus(ui, &resp, rc.shrink(2.0));

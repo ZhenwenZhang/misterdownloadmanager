@@ -354,7 +354,7 @@ impl Default for Settings {
             double_click_open: false,
             confirm_delete: true,
             delete_files_too: false,
-            categories_width: 143,
+            categories_width: if cfg!(target_os = "macos") { 184 } else { 143 },
             window: None,
             window_maximized: false,
             show_categories: true,
@@ -362,7 +362,12 @@ impl Default for Settings {
             view: None,
             dark_mode_support: true,
             always_dark: false,
-            theme: "classic".into(),
+            theme: if cfg!(target_os = "macos") {
+                "native"
+            } else {
+                "classic"
+            }
+            .into(),
             renderer: None,
             interface_size: 100,
             limits_on: false,
@@ -392,9 +397,9 @@ impl Default for Settings {
             url_history: Vec::new(),
             folder_history: Vec::new(),
             set_creation_date: false,
-            show_start_dialog: true,
+            show_start_dialog: !cfg!(target_os = "macos"),
             only_add_to_queue: false,
-            start_immediately: true,
+            start_immediately: false,
             queue_panel_later: true,
             queue_panel_batch: true,
             ignore_mtime: false,
@@ -995,6 +1000,13 @@ pub fn own_net() -> mdm_engine::Options {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn macos_downloads_skip_the_confirmation_dialog() {
+        let settings = super::Settings::default();
+        assert_eq!(settings.show_start_dialog, !cfg!(target_os = "macos"));
+        assert!(!settings.start_immediately);
+    }
+
     #[test]
     fn a_dialog_keeps_what_changed_elsewhere_meanwhile() {
         let from = super::Settings::default();

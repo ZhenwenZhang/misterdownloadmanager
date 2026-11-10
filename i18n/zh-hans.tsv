@@ -6,6 +6,8 @@
 #. never shown for a single file
 #. {n} = a number (keep the braces as they are)
 #, machine
+#. text in macos_main.rs
+	Added	添加
 @plural	Also delete the {n} file from disk|Also delete the {n} files from disk	同时从磁盘中删除 {n} 个文件
 #. count in a dialog box
 #. never shown for a single download
@@ -22,11 +24,15 @@
 #. where a magnet's peers came from: the DHT; {n} = the computers it knows now; {peers} = "3 peers"
 #. {n} = a number (keep the braces as they are)
 #, machine
+#. text in macos_main.rs
+	Connections	连接
 @plural	DHT, {n} node: {peers}|DHT, {n} nodes: {peers}	DHT，{n} 个节点：{peers}
 #. count in extracting archives (a download's log, the Archive password window)
 #. in a download's log: {n} is a number of files, {folder} where they went
 #. {n} = a number (keep the braces as they are)
 #, machine
+#. text in macos_main.rs
+	Details	详情
 @plural	Extracted {n} file to {folder}|Extracted {n} files to {folder}	已将 {n} 个文件提取到 {folder}
 #. count in the Add torrent window
 #. while a magnet link's file list is fetched; {n} = peers found so far (none answered yet)
@@ -38,11 +44,23 @@
 #. RSS feeds window, Download rules: how many articles the feeds hold now that the rule matches (it adds only new ones)
 #. {n} = a number (keep the braces as they are)
 #, machine
+#. text in macos_main.rs
+	Location	位置
 @plural	Matches {n} article now (it adds new ones only):|Matches {n} articles now (it adds new ones only):	当前匹配 {n} 篇文章（仅添加新文章）：
 #. count in a dialog box
 #. "files already there" question, under the first path: {n} = how many more
 #. {n} = a number (keep the braces as they are)
 #, machine
+#. text in macos_main.rs
+	Progress	进度
+#. text in macos_main.rs
+	Resumable	可恢复
+#. text in macos_main.rs
+	Save To	保存到
+#. text in macos_main.rs
+#. text in macos_main.rs
+	Source	来源
+	Speed	速度
 @plural	and {n} other file|and {n} other files	以及其他 {n} 个文件
 #. count in a download's progress window
 #. a connection closed because the server allows only that many
@@ -52,6 +70,8 @@
 #. count in rssdlg.rs
 #. {n} = a number (keep the braces as they are)
 #, machine
+#. text in macos_main.rs
+	{n} active	{n} 个活动连接
 @plural	{n} article|{n} articles	{n}篇文章
 #. count in the download list (sizes, speeds, status)
 #. {n} = a number (keep the braces as they are)
@@ -60,11 +80,11 @@
 #. count in the main window
 #. {n} = a number (keep the braces as they are)
 #, machine
-@plural	{n} download|{n} downloads	{n}个下载
+@plural	{n} download|{n} downloads	{n} 个下载
 #. count in the main window
 #. {n} = a number (keep the braces as they are)
 #, machine
-@plural	{n} downloading|{n} downloading	{n}个正在下载
+@plural	{n} downloading|{n} downloading	{n} 个正在下载
 #. count in extracting archives (a download's log, the Archive password window)
 #. in a download's log, after extracting: entries of the archive not written (links, names that would leave the folder)
 #. {n} = a number (keep the braces as they are)
@@ -224,6 +244,8 @@
 #. why an archive wasn't extracted (after "Couldn't extract {name}: ")
 #, machine
 	a volume of it is missing	缺少其中一个卷
+#. text in macos_main.rs
+	About	关于
 #. window title in the Help menu's windows (About, updates, shortcuts, Tell a friend)
 #, machine
 	About Mister Download Manager	关于 Mister Download Manager
@@ -1975,6 +1997,9 @@
 #. Options → DNS settings: checkbox: when the chosen DNS can't be reached, use the system's instead
 #, machine
 	If it can't be reached, use the system's DNS	无法连接时使用系统 DNS
+#. text in macos_main.rs
+#. the sidebar speed chart while nothing is downloading
+	Idle	空闲
 #. checkbox in the Options window
 #, machine
 	Ignore file modification time changes when resuming a download	恢复下载时忽略文件修改时间更改

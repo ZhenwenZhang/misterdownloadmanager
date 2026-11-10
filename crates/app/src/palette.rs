@@ -383,6 +383,9 @@ metrics! {
     font_heading: "font.heading", "egui's headings" = 16.0;
     list_row: "list.row", "Height of a row in the download list" = 17.0;
     list_header: "list.header", "Height of the download list's column headers" = 24.0;
+    toolbar_height: "toolbar.height", "Height of the main toolbar band" = 68.0;
+    toolbar_button_width: "toolbar.button-width", "Minimum width of a main toolbar button" = 66.0;
+    toolbar_icon: "toolbar.icon", "Size of a main toolbar icon" = 32.0;
     tooltip_width: "tooltip.width", "Where a tooltip's text wraps" = 320.0;
     tooltip_margin_x: "tooltip.margin-x", "A tooltip's left and right padding" = 9.0;
     tooltip_margin_top: "tooltip.margin-top", "A tooltip's top padding" = 6.0;
@@ -462,6 +465,9 @@ pub enum CheckLook {
     Aero,
     /// Mac OS X: a glossy box with round corners, filled with the accent's gel when checked.
     Aqua,
+    /// macOS 11 and later: a flat box, white at rest, filled with the accent and a white tick
+    /// when checked.
+    Mac,
 }
 
 /// How a push button shows the pointer and a press.
@@ -479,6 +485,9 @@ pub enum ButtonLook {
     Aero,
     /// Mac OS X: a gel face, round at the ends, the default button in the accent's gel.
     Aqua,
+    /// macOS 11 and later: a flat face with a hairline edge, the default button filled with the
+    /// accent and its text in white.
+    Mac,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -555,11 +564,13 @@ impl Controls {
             ("check", "luna") => self.check = CheckLook::Luna,
             ("check", "aero") => self.check = CheckLook::Aero,
             ("check", "aqua") => self.check = CheckLook::Aqua,
+            ("check", "mac") => self.check = CheckLook::Mac,
             ("button", "fluent") => self.button = ButtonLook::Fluent,
             ("button", "breeze") => self.button = ButtonLook::Breeze,
             ("button", "luna") => self.button = ButtonLook::Luna,
             ("button", "aero") => self.button = ButtonLook::Aero,
             ("button", "aqua") => self.button = ButtonLook::Aqua,
+            ("button", "mac") => self.button = ButtonLook::Mac,
             ("progress", "line") => self.progress = ProgressLook::Line,
             ("progress", "bar") => self.progress = ProgressLook::Bar,
             ("progress", "blocks") => self.progress = ProgressLook::Blocks,

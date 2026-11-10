@@ -1,6 +1,9 @@
 //! The main window (notes/ui-spec/main-window.md): menu bar, toolbar, Categories tree and the
 //! download list at IDM 6.42's measured positions, plus the download actions behind them.
 
+#[cfg(target_os = "macos")]
+mod macos_main;
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -165,9 +168,11 @@ enum Cmd {
     Extract,
     /// Tasks → Link grabber… (#37): the window, empty (links pasted in) or as it is.
     LinkGrabber,
-    /// Downloads → Find (Ctrl-F) / Find Next (F3).
+    /// Downloads → Find (Ctrl-F) / Find Next (F3); Windows and Linux only.
     Find,
     FindNext,
+    /// macOS: the toolbar's search box takes the keys instead of a Find window.
+    FocusSearch,
     /// View → Arrange files: sort by a column (data slot), or by order of addition.
     Arrange(Option<usize>),
     /// Header right-click → Clear all filters.
@@ -275,6 +280,7 @@ impl Cmd {
             Cmd::AddUrl => "Ctrl+N",
             Cmd::Find => "Ctrl+F",
             Cmd::FindNext => "F3",
+            Cmd::FocusSearch => "⌘F",
             Cmd::MoveRename => "Ctrl+M",
             Cmd::Remove => "Delete",
             Cmd::RemoveWithFiles => "Shift+Delete",
@@ -302,6 +308,9 @@ enum Popup {
     DropTarget,
     /// Categories right-click: the node's view (None: the "Queues" root).
     Node(Option<View>),
+    /// The compact macOS toolbar's application menu.
+    #[cfg(target_os = "macos")]
+    MacMain,
 }
 
 /// Hidden to the tray, the window's memory is given back 2 s after it hid (its last frames done),
@@ -625,6 +634,17 @@ pub struct App {
     wake: crate::wake::Waker,
     /// Commands from ipc.rs (command line, second launch, browser).
     commands: std::sync::mpsc::Receiver<ipc::Incoming>,
+    /// macOS' compact command search and detail-pane state.
+    #[cfg(target_os = "macos")]
+    mac_search: String,
+    #[cfg(target_os = "macos")]
+    mac_failed_only: bool,
+    #[cfg(target_os = "macos")]
+    mac_inspector_hidden: bool,
+    #[cfg(target_os = "macos")]
+    mac_speed_history: Vec<f64>,
+    #[cfg(target_os = "macos")]
+    mac_speed_sampled: Instant,
 }
 
 /// The login written in an address (`ftp://user:pass@host/…`), decoded.
@@ -963,6 +983,14 @@ impl App {
         let downloads = dirs::download_dir()
             .or_else(|| dirs::home_dir().map(|h| h.join("Downloads")))
             .unwrap_or_else(|| PathBuf::from("."));
+        // The macOS build starts ordinary files in the main window. Migrate older profiles
+        // that still requested the intermediate Download File Info confirmation.
+        #[cfg(target_os = "macos")]
+        {
+            settings.show_start_dialog = false;
+            settings.only_add_to_queue = false;
+            settings.start_immediately = false;
+        }
         // The Categories pane as it was left, and the node shown (if it still exists).
         let [all_open, unfinished_open, finished_open, queues_open] = settings.branches;
         let known = |c: Option<Category>| c.is_none_or(|c| Category::all().contains(&c));
@@ -1128,6 +1156,16 @@ impl App {
             clock: seconds_now(),
             wake: Default::default(),
             commands,
+            #[cfg(target_os = "macos")]
+            mac_search: String::new(),
+            #[cfg(target_os = "macos")]
+            mac_failed_only: false,
+            #[cfg(target_os = "macos")]
+            mac_inspector_hidden: false,
+            #[cfg(target_os = "macos")]
+            mac_speed_history: vec![0.0; 24],
+            #[cfg(target_os = "macos")]
+            mac_speed_sampled: Instant::now(),
         }
     }
 
@@ -4529,7 +4567,13 @@ impl App {
     }
 
     /// Options → OK: keep the new settings and act on what changed.
-    fn apply_options(&mut self, new: Settings) {
+    fn apply_options(&mut self, mut new: Settings) {
+        #[cfg(target_os = "macos")]
+        {
+            new.show_start_dialog = false;
+            new.only_add_to_queue = false;
+            new.start_immediately = false;
+        }
         new.publish_categories();
         // Portable mode writes nothing outside its folder (the option is off there).
         if new.launch_on_startup != self.settings.launch_on_startup
@@ -5040,6 +5084,9 @@ impl App {
             Cmd::LimiterSettings => {
                 self.speed_settings = Some(dialogs::SpeedSettings::new(&self.settings));
             }
+            Cmd::FocusSearch => ctx.memory_mut(|memory| {
+                memory.request_focus(egui::Id::unique("macos-main-search"));
+            }),
             Cmd::Find => {
                 if self.find.is_none() {
                     self.find = Some(crate::find::Find::new(self.last_find.as_ref()));
@@ -5489,7 +5536,8 @@ impl App {
                 ),
             ],
             2 => vec![
-                I("&Pause All", Cmd::StopAll, any_running, false),
+                // One entry: the shell stops downloads, it has no pause-all (the old pair bound
+                // both labels to the same command).
                 I("&Stop All", Cmd::StopAll, any_running, false),
                 Sep,
                 I(
@@ -5608,6 +5656,24 @@ impl App {
                 I("Support &MDM", Cmd::Support, true, false),
             ],
         };
+        // macOS has no Find window (the toolbar searches as you type) and no Windows shell
+        // settings to offer: drop those entries rather than show them greyed out.
+        if cfg!(target_os = "macos") {
+            menu.retain(|entry| {
+                !matches!(
+                    entry,
+                    MenuEntry::Item(_, Cmd::Find | Cmd::FindNext, _, _)
+                        | MenuEntry::Item(_, Cmd::None, false, _)
+                ) && !matches!(entry, MenuEntry::Sub(_, false, items) if items.is_empty())
+            });
+            if let Some(at) = menu
+                .iter()
+                .position(|entry| matches!(entry, MenuEntry::Item(_, Cmd::SelectAll, _, _)))
+            {
+                menu.insert(at, MenuEntry::Item("&Find", Cmd::FocusSearch, true, false));
+            }
+        }
+
         // View → Theme (MDM's, #45), after Always dark; then Draw with (#89, #206), where wgpu is
         // built (Windows, Linux, macOS: renderer.rs).
         if let Some(at) = menu
@@ -6752,6 +6818,8 @@ impl App {
                     None,
                 ),
                 Popup::Node(node) => (self.node_entries(node), None),
+                #[cfg(target_os = "macos")]
+                Popup::MacMain => (Vec::new(), None),
                 Popup::DropTarget => (
                     vec![
                         MenuEntry::Item("Show Mister Download Manager", Cmd::ShowMain, true, false),
@@ -6857,6 +6925,44 @@ impl App {
         self.file_info = Some(fi);
     }
 
+    /// Add URL after its address was accepted. The macOS build skips the second confirmation
+    /// window and exposes the running task directly in the main download list.
+    fn add_url_or_open_file_info(
+        &mut self,
+        new: dialogs::NewUrl,
+        context: ipc::Command,
+        ctx: &egui::Context,
+    ) {
+        if self.settings.show_start_dialog {
+            self.open_file_info(new, context, ctx);
+            return;
+        }
+
+        let name = mdm_engine::naming::sanitize(&mdm_engine::naming::file_name(None, &new.url));
+        let category = Category::of(&name);
+        let dir = self.settings.category_dir(category, &self.downloads);
+        let dest = mdm_engine::naming::destination(&dir, &name);
+        let source = if context.referer.is_some() || context.cookies.is_some() {
+            crate::i18n::mark("from the browser")
+        } else {
+            crate::i18n::mark("with Add URL")
+        };
+        let id = self.push_item(
+            new.url,
+            dest,
+            category,
+            String::new(),
+            context.size,
+            new.login,
+            context,
+            source,
+        );
+        self.name_guessed(id, true);
+        self.selection.set(id);
+        self.start(id, true);
+        self.dirty = true;
+    }
+
     /// Options → Downloads → "If a duplicate download link is added": true when adding `url`
     /// goes on now. 0 asks (`pending` waits), 1 adds it with a numbered name, 2 replaces the
     /// download already there, 3 opens that one (finished) or resumes it.
@@ -6925,7 +7031,7 @@ impl App {
                 self.handle_command(*cmd, ctx);
                 self.duplicate_cleared = false;
             }
-            Pending::Url(new) => self.open_file_info(new, Default::default(), ctx),
+            Pending::Url(new) => self.add_url_or_open_file_info(new, Default::default(), ctx),
         }
     }
 
@@ -7122,6 +7228,9 @@ impl App {
     /// and after each change (a large size on a small screen), in the frame after it: egui
     /// measures the window at the old size in the frame a new one applies. False in that frame.
     fn follow_zoom(&mut self, ctx: &egui::Context) -> bool {
+        #[cfg(target_os = "macos")]
+        const MIN: egui::Vec2 = egui::vec2(900.0, 560.0);
+        #[cfg(not(target_os = "macos"))]
         const MIN: egui::Vec2 = egui::vec2(600.0, 300.0);
         crate::scale::keys(ctx);
         let zoom = ctx.zoom_factor();
@@ -7750,6 +7859,9 @@ impl App {
     }
 
     fn dialogs(&mut self, ctx: &egui::Context) {
+        // From here on, `dialogs::dialogs_open()` reports the dialogs of the frame that just
+        // ended, so the main window's shortcuts can stay out of their keys.
+        dialogs::begin_frame();
         self.help_dialogs(ctx);
         if self.duplicate.is_none() {
             self.duplicate = self.duplicates_waiting.pop_front();
@@ -7939,7 +8051,7 @@ impl App {
                             login: new.login.clone(),
                         })
                     }) {
-                        self.open_file_info(new, Default::default(), ctx);
+                        self.add_url_or_open_file_info(new, Default::default(), ctx);
                     }
                 }
             }
@@ -8552,7 +8664,12 @@ impl App {
         }
         egui::CentralPanel::no_frame()
             .frame(egui::Frame::new().fill(chrome::WINDOW_BG()))
-            .show(ui, |ui| self.paint(ui));
+            .show(ui, |ui| {
+                #[cfg(target_os = "macos")]
+                self.paint_macos(ui);
+                #[cfg(not(target_os = "macos"))]
+                self.paint(ui);
+            });
         self.dialogs(&ctx);
         crate::crash::frame_end();
         crate::renderer::frame_done(&ctx);

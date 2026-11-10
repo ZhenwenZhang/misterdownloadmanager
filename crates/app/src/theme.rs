@@ -295,7 +295,11 @@ const SCRIPT_FONTS: &[(&str, &[&str], &[&str])] = &[
 const SCRIPT_FONTS: &[(&str, &[&str], &[&str])] = &[
     (
         "han",
-        &["PingFang.ttc", "Supplemental/Songti.ttc"],
+        &[
+            "PingFang.ttc",
+            "Hiragino Sans GB.ttc",
+            "Supplemental/Songti.ttc",
+        ],
         &["zh-hans", "zh-hant"],
     ),
     ("japanese", &["ヒラギノ角ゴシック W3.ttc"], &["ja"]),
@@ -371,7 +375,7 @@ fn symbol_fonts() -> Vec<Vec<u8>> {
     #[cfg(any(windows, target_os = "macos"))]
     return SYMBOL_FONTS
         .iter()
-        .filter_map(|f| std::fs::read(font_dir().join(f)).ok())
+        .filter_map(|f| std::fs::read(font_path(f)?).ok())
         .collect();
     #[cfg(not(any(windows, target_os = "macos")))]
     return fc_match(SYMBOL_PATTERN)
@@ -389,6 +393,32 @@ fn font_dir() -> std::path::PathBuf {
         .unwrap_or_else(|| std::path::PathBuf::from(r"C:\Windows\Fonts"));
     #[cfg(target_os = "macos")]
     return std::path::PathBuf::from("/System/Library/Fonts");
+}
+
+/// A system font's current path. Recent macOS releases keep some built-in fonts, including
+/// PingFang, in MobileAsset rather than directly in `/System/Library/Fonts`.
+#[cfg(any(windows, target_os = "macos"))]
+fn font_path(file: &str) -> Option<std::path::PathBuf> {
+    let installed = font_dir().join(file);
+    if installed.is_file() {
+        return Some(installed);
+    }
+    #[cfg(target_os = "macos")]
+    for root in [
+        "/System/Library/AssetsV2/com_apple_MobileAsset_Font8",
+        "/System/Library/AssetsV3/com_apple_MobileAsset_Font8",
+    ] {
+        let Ok(entries) = std::fs::read_dir(root) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let candidate = entry.path().join("AssetData").join(file);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+    }
+    None
 }
 
 /// The fonts for scripts outside the interface language, loaded the first time a character
@@ -506,7 +536,11 @@ const FALLBACK_FONTS: &[FallbackFont] = &[
             (0xFF00, 0xFFEF),
             (0x20000, 0x3FFFF),
         ],
-        files: &["PingFang.ttc", "Supplemental/Songti.ttc"],
+        files: &[
+            "PingFang.ttc",
+            "Hiragino Sans GB.ttc",
+            "Supplemental/Songti.ttc",
+        ],
     },
     FallbackFont {
         key: "khmer",
@@ -542,10 +576,9 @@ fn fallback_font(c: char) -> Option<(String, egui::FontData)> {
         let font = FALLBACK_FONTS
             .iter()
             .find(|f| f.ranges.iter().any(|&(a, b)| (a..=b).contains(&cp)))?;
-        let dir = font_dir();
         (
             format!("fallback:{}", font.key),
-            font.files.iter().map(|f| dir.join(f)).collect(),
+            font.files.iter().filter_map(|f| font_path(f)).collect(),
         )
     };
     #[cfg(not(any(windows, target_os = "macos")))]
@@ -617,7 +650,7 @@ fn ui_font() -> Option<Vec<u8>> {
     #[cfg(target_os = "macos")]
     return ["SFNS.ttf", "Helvetica.ttc"]
         .iter()
-        .find_map(|f| std::fs::read(font_dir().join(f)).ok());
+        .find_map(|f| std::fs::read(font_path(f)?).ok());
     #[cfg(not(any(windows, target_os = "macos")))]
     return fc_match("sans-serif").and_then(|f| std::fs::read(f).ok());
 }
@@ -626,14 +659,15 @@ fn ui_font() -> Option<Vec<u8>> {
 fn script_fonts(code: &str, all: bool) -> Vec<(String, Vec<u8>)> {
     #[cfg(any(windows, target_os = "macos"))]
     {
-        let dir = font_dir();
         SCRIPT_FONTS
             .iter()
             .filter(|(_, _, langs)| all || langs.contains(&code))
             // The first file there is used (older systems name some differently); a .ttc's
             // first face is the regular one.
             .filter_map(|(key, files, _)| {
-                let bytes = files.iter().find_map(|f| std::fs::read(dir.join(f)).ok())?;
+                let bytes = files
+                    .iter()
+                    .find_map(|f| std::fs::read(font_path(f)?).ok())?;
                 Some(((*key).to_owned(), bytes))
             })
             .collect()
@@ -950,6 +984,13 @@ pub fn apply_theme(ctx: &egui::Context) {
 #[cfg(test)]
 mod mode_tests {
     use super::wanted;
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_finds_pingfang_in_the_system_font_assets() {
+        let path = super::font_path("PingFang.ttc").expect("PingFang is a macOS system font");
+        assert!(path.is_file(), "{}", path.display());
+    }
 
     /// #60: Always dark wins whatever the system says; otherwise Dark Mode support follows it.
     #[test]

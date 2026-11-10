@@ -8,6 +8,7 @@
 fn main() {
     catalogs();
     commit();
+    build_date();
     let os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     let windows = os == "windows";
     // `cfg(gpu)`: wgpu is built, with this system's own graphics API (renderer.rs, #89, #206):
@@ -132,6 +133,49 @@ fn languages(root: &std::path::Path) {
     }
     let out = std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("languages.rs");
     std::fs::write(out, format!("&[\n{}\n]\n", rows.join("\n"))).unwrap();
+}
+
+/// The day this is built (`MDM_BUILD_DATE`, "2026-11-10"), which the window title and Help →
+/// About show as the version. Builds are told apart by their date; the Cargo version stays
+/// what update checks compare with the releases. `MDM_BUILD_DATE` overrides it (a release
+/// script can stamp the tag's day).
+fn build_date() {
+    println!("cargo:rerun-if-env-changed=MDM_BUILD_DATE");
+    let date = std::env::var("MDM_BUILD_DATE")
+        .ok()
+        .filter(|d| !d.trim().is_empty())
+        .unwrap_or_else(today);
+    println!("cargo:rustc-env=MDM_BUILD_DATE={date}");
+}
+
+/// Today, as the person building reads it: the local date where `date` exists, else UTC.
+fn today() -> String {
+    #[cfg(unix)]
+    if let Ok(out) = std::process::Command::new("date")
+        .args(["+%Y-%m-%d"])
+        .output()
+        && out.status.success()
+    {
+        let date = String::from_utf8_lossy(&out.stdout).trim().to_owned();
+        if !date.is_empty() {
+            return date;
+        }
+    }
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    // Howard Hinnant's civil_from_days: the UTC day without a calendar crate.
+    let z = (secs / 86_400) as i64 + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!("{y:04}-{m:02}-{d:02}")
 }
 
 /// The commit this is built from (`MDM_COMMIT`, "unknown" outside a git checkout), for Help →

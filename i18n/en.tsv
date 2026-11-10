@@ -46,10 +46,10 @@
 #. count in the download list (sizes, speeds, status)
 #. {n} = a number (keep the braces as they are)
 @plural	{n} byte|{n} bytes	{n} byte|{n} bytes
-#. count in the main window
+#. count in macos_main.rs; count in the main window
 #. {n} = a number (keep the braces as they are)
 @plural	{n} download|{n} downloads	{n} download|{n} downloads
-#. count in the main window
+#. count in macos_main.rs; count in the main window
 #. {n} = a number (keep the braces as they are)
 @plural	{n} downloading|{n} downloading	{n} downloading|{n} downloading
 #. count in extracting archives (a download's log, the Archive password window)
@@ -73,7 +73,7 @@
 #. a number of peers (computers sharing a torrent), after where they came from
 #. {n} = a number (keep the braces as they are)
 @plural	{n} peer|{n} peers	{n} peer|{n} peers
-#. count in the main window
+#. count in macos_main.rs; count in the main window
 #. {n} = a number (keep the braces as they are)
 @plural	{n} selected|{n} selected	{n} selected|{n} selected
 #. count in the main window
@@ -174,6 +174,8 @@
 #. text in extracting archives (a download's log, the Archive password window)
 #. why an archive wasn't extracted (after "Couldn't extract {name}: ")
 	a volume of it is missing	a volume of it is missing
+#. text in macos_main.rs
+	About	About
 #. window title in the Help menu's windows (About, updates, shortcuts, Tell a friend)
 	About Mister Download Manager	About Mister Download Manager
 #. text in whereis.rs
@@ -216,7 +218,7 @@
 #. window title in extension.rs
 #. title of the window that offers the browser extension
 	Add Mister Download Manager to your browser	Add Mister Download Manager to your browser
-#. message or event log entry in the main window; text in the tray icon's menu
+#. text in macos_main.rs; message or event log entry in the main window; text in the tray icon's menu
 #. link in the empty download list: opens Add URL
 	Add new download	Add new download
 #. text in the Options window
@@ -251,6 +253,8 @@
 #. button: add a debrid service account (opens the sign-in)
 #. the trailing ... means it opens a window: keep it
 	Add...	Add...
+#. text in macos_main.rs
+	Added	Added
 #. message or event log entry in the main window
 #. event log entry: an RSS download rule added this torrent; {rule} is the rule's name, {feed} the feed's
 	Added by the RSS rule {rule} from {feed}	Added by the RSS rule {rule} from {feed}
@@ -300,7 +304,7 @@
 #. text in countries.rs
 #. a country's name (where a download's server is)
 	Algeria	Algeria
-#. text in remote.rs
+#. text in macos_main.rs; text in remote.rs
 #. remote control page (on a phone): tab: every download
 	All	All
 #. item in the Categories tree in the main window
@@ -567,7 +571,7 @@
 #. text in extension.rs
 #. the headline of the window that offers the browser extension
 	Catch downloads from your browser	Catch downloads from your browser
-#. text in the main window (menus, toolbar, Categories pane)
+#. text in macos_main.rs; text in the main window (menus, toolbar, Categories pane)
 #. title of the side pane that lists the categories
 	Categories	Categories
 #. page title in the Options window
@@ -673,7 +677,7 @@
 	Client	Client
 #. text in the Options window
 	Clock:	Clock:
-#. text in the Checksum window; text in the main window (menus, toolbar, Categories pane); button in crashui.rs; button in a dialog box; button in extension.rs; button in the Help menu's windows (About, updates, shortcuts, Tell a friend); button in helpers.rs; button in the download list; button in the Options window; button in rssdlg.rs; text in standard windows
+#. text in macos_main.rs; text in the Checksum window; text in the main window (menus, toolbar, Categories pane); button in crashui.rs; button in a dialog box; button in extension.rs; button in the Help menu's windows (About, updates, shortcuts, Tell a friend); button in helpers.rs; button in the download list; button in the Options window; button in rssdlg.rs; text in standard windows
 #. both verbs: Verify = check the file now; Close = close the window
 #. tooltip of the × that closes the Categories pane
 #. verb: closes this window
@@ -725,6 +729,8 @@
 #. text in the Options window
 #. tab title: connection settings
 	Connection	Connection
+#. text in macos_main.rs
+	Connections	Connections
 #. page title in the Options window
 	Connections and Limits	Connections and Limits
 #. text in the Options window
@@ -845,6 +851,8 @@
 	Description or part of the description	Description or part of the description
 #. text in a download's Properties window
 	Description:	Description:
+#. text in macos_main.rs
+	Details	Details
 #. text in the Options window
 #. column title: a paired phone's or computer's name
 	Device	Device
@@ -957,7 +965,7 @@
 #. RSS feeds window: add the selected article's torrent (opens Add torrent)
 #. the trailing ... means it opens a window: keep it
 	Download...	Download...
-#. text in a download's progress window
+#. text in macos_main.rs; text in a download's progress window
 #. label before the amount received so far
 #. column title: bytes this connection received
 	Downloaded	Downloaded
@@ -1072,7 +1080,7 @@
 #. text in countries.rs
 #. a country's name (where a download's server is)
 	Eritrea	Eritrea
-#. text in a dialog box; item in the Categories tree in the download list; value in a column's filter list in the download list; text in the download list (sizes, speeds, status); text in remote.rs
+#. text in macos_main.rs; text in a dialog box; item in the Categories tree in the download list; value in a column's filter list in the download list; text in the download list (sizes, speeds, status); text in remote.rs
 #. in Download File Info, where the size goes: the address didn't answer
 #. a download's status (state it is in, not a command)
 #. a download's status (state it is in, not a command): it failed
@@ -1173,7 +1181,7 @@
 #. text in a download's progress window; text in a download's Properties window
 #. noun: a file of no known type
 	File	File
-#. text in the Scheduler window
+#. text in macos_main.rs; text in the Scheduler window
 	File Name	File Name
 #. text in the Download video window
 	File name	File name
@@ -1221,7 +1229,7 @@
 	Find the next match	Find the next match
 #. text in the Find window
 	Find:	Find:
-#. item in the Categories tree in the main window; text in remote.rs
+#. text in macos_main.rs; item in the Categories tree in the main window; text in remote.rs
 #. adjective: the downloads that are complete
 #. remote control page (on a phone): tab: downloads finished
 	Finished	Finished
@@ -1455,6 +1463,9 @@
 #. text in countries.rs
 #. a country's name (where a download's server is)
 	Iceland	Iceland
+#. text in macos_main.rs
+#. the sidebar speed chart while nothing is downloading
+	Idle	Idle
 #. text in the Options window
 	If a duplicate download link is added:	If a duplicate download link is added:
 #. text in the Options window
@@ -1723,6 +1734,8 @@
 #. text in the Add torrent window
 #. where a magnet's peers came from: computers on your own network; {peers} = "3 peers"
 	Local network: {peers}	Local network: {peers}
+#. text in macos_main.rs
+	Location	Location
 #. text in the Batch download window; text in a dialog box; text in a download's Properties window
 #. noun: the user name for the server (an input box follows)
 #. noun: the user name and password section
@@ -1924,7 +1937,7 @@
 #. text in countries.rs
 #. a country's name (where a download's server is)
 	Montserrat	Montserrat
-#. text in remote.rs
+#. text in macos_main.rs; text in remote.rs
 #. remote control page (on a phone): its menu's button
 	More	More
 #. text in countries.rs
@@ -2045,7 +2058,7 @@
 #. text in countries.rs
 #. a country's name (where a download's server is)
 	Niue	Niue
-#. button in a dialog box; text in a download's progress window
+#. text in macos_main.rs; button in a dialog box; text in a download's progress window
 	No	No
 #. text in a dialog box
 	No addresses yet	No addresses yet
@@ -2258,7 +2271,7 @@
 	Only the first {n} videos are listed.	Only the first {n} videos are listed.
 #. checkbox in a dialog box
 	Only while I'm using the computer	Only while I'm using the computer
-#. button in a dialog box; text in a dialog box; button in a download's Properties window
+#. button in a dialog box; text in a dialog box; button in a download's Properties window; text in a download's Properties window
 #. verb: opens the downloaded file
 #. title of the message when a downloaded file can't be opened
 #. verb: opens the file
@@ -2290,12 +2303,12 @@
 	Open the selected download	Open the selected download
 #. what a keyboard shortcut does in the Help menu's windows (About, updates, shortcuts, Tell a friend)
 	Open the selected download's menu	Open the selected download's menu
-#. message or event log entry in the main window; text in the Add torrent window
+#. text in macos_main.rs; message or event log entry in the main window; text in the Add torrent window
 	Open torrent file	Open torrent file
 #. button in a dialog box
 #. the trailing ... means it opens a window: keep it
 	Open with...	Open with...
-#. text in the tray icon's menu
+#. text in macos_main.rs; text in the tray icon's menu
 #. plural noun: opens the Options window (settings)
 	Options	Options
 #. text in a download's progress window
@@ -2437,6 +2450,8 @@
 #. text in the download list (sizes, speeds, status)
 #. category name: programs and installers (exe, msi)
 	Programs	Programs
+#. text in macos_main.rs
+	Progress	Progress
 #. what a keyboard shortcut does in the Help menu's windows (About, updates, shortcuts, Tell a friend)
 	Properties of the selected download	Properties of the selected download
 #. text in a download's progress window
@@ -2467,6 +2482,8 @@
 #. what a screen reader calls the list of a video's formats (1080p, 720p, audio only…)
 #. label before the quality chosen for all of a playlist's videos
 	Quality	Quality
+#. text in macos_main.rs
+	Queue	Queue
 #. text in the Scheduler window
 #. the name proposed for a new queue; {n} = its number
 #. {n} = a number (keep the braces as they are)
@@ -2562,7 +2579,9 @@
 #. text in a download's Properties window
 #. {result} = how the last attempt ended (a status or an error message)
 	Result: {result}	Result: {result}
-#. text in a download's progress window
+#. text in macos_main.rs
+	Resumable	Resumable
+#. text in macos_main.rs; text in a download's progress window
 #. verb: continue the download
 	Resume	Resume
 #. text in a download's progress window
@@ -2660,7 +2679,7 @@
 #. noun: the tool that starts and stops queues on time
 #. noun: opens the Scheduler (the tool that starts queues on time)
 	Scheduler	Scheduler
-#. text in langpick.rs
+#. text in macos_main.rs; text in langpick.rs
 	Search:	Search:
 #. text in the Batch download window
 	Second file:	Second file:
@@ -2843,7 +2862,7 @@
 	Sites send their best quality as separate video and audio, and ffmpeg joins them. On this system MDM uses yours: install ffmpeg with your package manager.	Sites send their best quality as separate video and audio, and ffmpeg joins them. On this system MDM uses yours: install ffmpeg with your package manager.
 #. text in helpers.rs
 	Sites send their best quality as separate video and audio. ffmpeg puts them together into one file that plays anywhere.	Sites send their best quality as separate video and audio. ffmpeg puts them together into one file that plays anywhere.
-#. text in the Link grabber window; text in a download's progress window; text in the Scheduler window; text in the Add torrent window
+#. text in macos_main.rs; text in the Link grabber window; text in a download's progress window; text in the Scheduler window; text in the Add torrent window
 #. column title: the file's size
 #. column title: file size
 	Size	Size
@@ -2882,6 +2901,8 @@
 #. the kind of file the Open dialog lists (sound files)
 #. tab title: sound settings
 	Sounds	Sounds
+#. text in macos_main.rs
+	Source	Source
 #. link (opens a web page) in the Help menu's windows (About, updates, shortcuts, Tell a friend)
 	Source code	Source code
 #. text in the Link grabber window
@@ -2903,7 +2924,9 @@
 #. text in countries.rs
 #. a country's name (where a download's server is)
 	Spain	Spain
-#. text in a download's progress window; text in the tray icon's menu
+#. text in macos_main.rs
+	Speed	Speed
+#. text in macos_main.rs; text in a download's progress window; text in the tray icon's menu
 #. tab title: the tool that limits the download speed
 	Speed Limiter	Speed Limiter
 #. window title in a dialog box
@@ -2967,6 +2990,8 @@
 #. text in remote.rs; text in the Add torrent window
 #. remote control page (on a phone): button: stop a queue
 	Stop	Stop
+#. text in macos_main.rs
+	Stop All	Stop All
 #. text in the Scheduler window; checkbox in the Scheduler window
 	Stop download at	Stop download at
 #. text in playlistdlg.rs
@@ -3423,7 +3448,7 @@
 #. text in the Scheduler window
 #. tooltip on the Scheduler's "Wake the computer to run this queue" while "Start download at" is off
 	Tick "Start download at" first: the computer is woken for the start time	Tick "Start download at" first: the computer is woken for the start time
-#. text in a download's progress window; text in the Scheduler window
+#. text in macos_main.rs; text in a download's progress window; text in the Scheduler window
 	Time left	Time left
 #. text in countries.rs
 #. a country's name (where a download's server is)
@@ -3478,7 +3503,7 @@
 #. Add trackers: above the box; {name} is the torrent's name
 #. {name} = a file name (keep the braces as they are)
 	Trackers to add to {name}, one address a line:	Trackers to add to {name}, one address a line:
-#. text in a download's progress window
+#. text in macos_main.rs; text in a download's progress window
 	Transfer rate	Transfer rate
 #. text in countries.rs
 #. a country's name (where a download's server is)
@@ -3577,7 +3602,7 @@
 #. text in the Link grabber window
 #. Link grabber button (IDM's): untick every link
 	Uncheck all	Uncheck all
-#. item in the Categories tree in the main window; text in remote.rs
+#. text in macos_main.rs; item in the Categories tree in the main window; text in remote.rs
 #. adjective: the downloads that are not complete yet
 #. remote control page (on a phone): tab: downloads not finished yet
 	Unfinished	Unfinished
@@ -3623,7 +3648,7 @@
 #. Video helpers: button: pick a program (yt-dlp or ffmpeg) already on the computer
 #. the trailing ... means it opens a window: keep it
 	Use another program...	Use another program...
-#. text in the Batch download window; checkbox in the Batch download window; text in a dialog box; checkbox in a dialog box
+#. text in the Batch download window; checkbox in the Batch download window; checkbox in a dialog box; text in a dialog box
 	Use authorization	Use authorization
 #. text in the Options window
 	Use automatic configuration script	Use automatic configuration script
@@ -3815,7 +3840,7 @@
 #. text in countries.rs
 #. a country's name (where a download's server is)
 	Yemen	Yemen
-#. button in a dialog box; text in a download's progress window
+#. text in macos_main.rs; button in a dialog box; text in a download's progress window
 	Yes	Yes
 #. button in helpers.rs
 #. the first start's helpers window: download yt-dlp and ffmpeg (the recommended answer)
@@ -3915,7 +3940,7 @@
 #. text in the Options window
 #. Options → Remote → Pair a device: done; {device} = the name it was given
 	{device} is paired. It can control MDM now.	{device} is paired. It can control MDM now.
-#. text in remote.rs
+#. text in macos_main.rs; text in remote.rs
 #. remote control page (on a phone): progress; {done} and {size} are sizes ("1.2 MB of 7.5 MB")
 #. {size} = a file size such as "4.2 MB" (keep the braces as they are)
 	{done} of {size}	{done} of {size}
@@ -3992,6 +4017,9 @@
 #. a number of connections the app learned by itself for a server
 #. {n} = a number (keep the braces as they are)
 	{n} (auto)	{n} (auto)
+#. text in macos_main.rs
+#. {n} = a number (keep the braces as they are)
+	{n} active	{n} active
 #. text in playlistdlg.rs
 #. in Download video for a playlist: how many videos are ticked, of how many
 #. {n} = a number (keep the braces as they are)
@@ -4397,7 +4425,7 @@ key	Up / Down	Up / Down
 #. menu command in the main window
 #. & marks the keyboard shortcut letter: keep one & before a letter of the translation
 menu	&About Mister Download Manager	&About Mister Download Manager
-#. menu command in the main window
+#. menu command in macos_main.rs; menu command in the main window
 #. & marks the keyboard shortcut letter: keep one & before a letter of the translation
 menu	&Add new download	&Add new download
 #. menu command in the main window
@@ -4419,6 +4447,9 @@ menu	&Download Now	&Download Now
 #. menu command in the main window
 #. & marks the keyboard shortcut letter: keep one & before a letter of the translation
 menu	&Exit	&Exit
+#. menu command in the main window
+#. & marks the keyboard shortcut letter: keep one & before a letter of the translation
+menu	&Find	&Find
 #. menu command in the main window
 #. verb: load downloads from a file
 #. & marks the keyboard shortcut letter: keep one & before a letter of the translation
@@ -4446,9 +4477,6 @@ menu	&Options	&Options
 #. & marks the keyboard shortcut letter: keep one & before a letter of the translation
 menu	&Paste	&Paste
 #. menu command in the main window
-#. & marks the keyboard shortcut letter: keep one & before a letter of the translation
-menu	&Pause All	&Pause All
-#. menu command in the main window
 #. verb: removes the selected download from the list
 #. & marks the keyboard shortcut letter: keep one & before a letter of the translation
 menu	&Remove	&Remove
@@ -4459,7 +4487,7 @@ menu	&Report a problem	&Report a problem
 #. header menu: put the columns back as they first were (order, widths, all shown)
 #. & marks the keyboard shortcut letter: keep one & before a letter of the translation
 menu	&Reset columns	&Reset columns
-#. menu command in the main window
+#. menu command in macos_main.rs; menu command in the main window
 #. Tasks menu: the RSS feeds window (feeds of torrents, and rules that add them)
 #. & marks the keyboard shortcut letter: keep one & before a letter of the translation
 #. the trailing ... means it opens a window: keep it
@@ -4488,7 +4516,7 @@ menu	&Video downloads	&Video downloads
 #. menu command in the main window
 #. & marks the keyboard shortcut letter: keep one & before a letter of the translation
 menu	Add &batch download	Add &batch download
-#. menu command in the main window
+#. menu command in macos_main.rs; menu command in the main window
 #. & marks the keyboard shortcut letter: keep one & before a letter of the translation
 #. the trailing ... means it opens a window: keep it
 menu	Add &magnet link...	Add &magnet link...
@@ -4634,7 +4662,7 @@ menu	From &text file...	From &text file...
 #. menu command in the main window
 #. & marks the keyboard shortcut letter: keep one & before a letter of the translation
 menu	H&elp contents	H&elp contents
-#. menu command in the main window
+#. menu command in macos_main.rs; menu command in the main window
 menu	Hide drop target	Hide drop target
 #. menu command in the main window
 #. View → Theme: black and white with strong edges, for low vision
@@ -4677,7 +4705,7 @@ menu	On Double click	On Double click
 #. verb: opens the downloaded file
 #. what double-clicking a download does — verb: open the file
 menu	Open	Open
-#. menu command in the main window
+#. menu command in macos_main.rs; menu command in the main window
 #. & marks the keyboard shortcut letter: keep one & before a letter of the translation
 #. the trailing ... means it opens a window: keep it
 menu	Open &torrent file...	Open &torrent file...
@@ -4746,7 +4774,7 @@ menu	Select &all	Select &all
 #. menu command in the main window
 #. & marks the keyboard shortcut letter: keep one & before a letter of the translation
 menu	Show &drop target	Show &drop target
-#. menu command in the main window
+#. menu command in macos_main.rs; menu command in the main window
 menu	Show Mister Download Manager	Show Mister Download Manager
 #. menu command in the main window
 #. & marks the keyboard shortcut letter: keep one & before a letter of the translation
@@ -4787,7 +4815,7 @@ menu	Toolbar	Toolbar
 #. menu command in the main window
 #. right-click menu: the submenu of a torrent's own commands
 menu	Torrent	Torrent
-#. menu command in the main window
+#. menu command in macos_main.rs; menu command in the main window
 #. & marks the keyboard shortcut letter: keep one & before a letter of the translation
 #. the trailing ... means it opens a window: keep it
 menu	Torrent setti&ngs...	Torrent setti&ngs...

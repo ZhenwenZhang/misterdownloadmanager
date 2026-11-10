@@ -350,7 +350,7 @@ def all_sinks(sources):
 
 def collect():
     out = Rows()
-    files = [f for f in sorted(SRC.glob("*.rs")) if f.name != "i18n.rs"]
+    files = [f for f in sorted(SRC.rglob("*.rs")) if f.name != "i18n.rs"]
     sources = {f.name: f.read_text(encoding="utf-8") for f in files}
     sinks_of = all_sinks(sources)
     for f in files:

@@ -31,6 +31,9 @@ themed! {
     MENUBAR_HOT => menubar_hot;
     MENUBAR_LINE => menubar_line;
     POPUP_BG => menu;
+    /// The accent: the fill of a menu item under the pointer on macOS, where menus highlight in
+    /// the system accent colour instead of greying the row.
+    ACCENT => accent;
     // The native menu window's frame (Windows draws menus in their own window), and every
     // in-window popup's (popup_surface).
     POPUP_BORDER => menu_border;
@@ -203,6 +206,7 @@ pub fn menus(p: &egui::Painter) -> Vec<(&'static str, f32, f32, f32)> {
 /// Paint the menu bar; returns what happened to its titles this frame, for [`menubar_next`]: a
 /// title clicked (or opened and shut by a screen reader), or the pointer over one (which only
 /// moves to it from another open menu).
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 pub fn menu_bar(ui: &mut Ui, o: Pos2, width: f32, open: Option<usize>) -> Option<MenuBarEvent> {
     let p = ui.painter().clone();
     fill(
@@ -650,6 +654,16 @@ pub enum MenuKind {
     List,
 }
 
+/// A menu label in the texts it is written for: the menu bar's own titles ("menubar"), the
+/// others in the menus' ("menu"). Without it a title such as "&Tasks" fell back to English in
+/// every language when it was drawn as a submenu of a menu-bar popup.
+fn menu_text(kind: MenuKind, label: &str) -> &str {
+    match kind {
+        MenuKind::Bar => crate::i18n::tc("menubar", label),
+        MenuKind::Context | MenuKind::List => crate::i18n::tc("menu", label),
+    }
+}
+
 /// Show a popup menu with its top-left at `pos` (main-window client coordinates, on screen) —
 /// its top-right in a right-to-left interface, where menus open to the left.
 ///
@@ -658,6 +672,27 @@ pub enum MenuKind {
 /// activation (so Escape still reaches the main window), and clicks on it never reach the
 /// widgets underneath. Call every frame while open, from the main window's `ui`.
 pub fn popup<C: Clone>(
+    ctx: &egui::Context,
+    kind: MenuKind,
+    id: &str,
+    pos: Pos2,
+    entries: &[MenuEntry<C>],
+    hint: &dyn Fn(&C) -> Option<&'static str>,
+) -> PopupResult<C> {
+    // macOS: drawn in the window instead (popup_overlay), as AppKit menus look.
+    #[cfg(target_os = "macos")]
+    {
+        popup_overlay(ctx, kind, id, pos, entries, hint)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        popup_windows(ctx, kind, id, pos, entries, hint)
+    }
+}
+
+/// Menus as borderless top-level windows, one per level, as Win32 (and X11) menus are.
+#[cfg(not(target_os = "macos"))]
+fn popup_windows<C: Clone>(
     ctx: &egui::Context,
     kind: MenuKind,
     id: &str,
@@ -881,8 +916,10 @@ fn menu_width(p: &egui::Painter, label: &str) -> f32 {
 /// Size of a menu window: the check column (38), the widest label, then 30 to the edge (48 when an
 /// item opens a submenu: its arrow), slots of 22 (separators 9), 3 px top and bottom. Fitted to
 /// its texts, so they don't float in a wide window.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 fn menu_size<C>(
     ctx: &egui::Context,
+    kind: MenuKind,
     entries: &[MenuEntry<C>],
     hint: &dyn Fn(&C) -> Option<&'static str>,
 ) -> egui::Vec2 {
@@ -893,13 +930,13 @@ fn menu_size<C>(
         .filter_map(|e| match e {
             MenuEntry::Item(l, c, ..) | MenuEntry::Radio(l, c, ..) => Some(match hint(c) {
                 Some(k) => {
-                    width(without_shortcut(&plain(crate::i18n::tc("menu", l)).0))
+                    width(without_shortcut(&plain(menu_text(kind, l)).0))
                         + 28.0
                         + text_width_font(&painter, winui::segoe(), &key_label(k)).ceil()
                 }
-                None => width(&plain(crate::i18n::tc("menu", l)).0),
+                None => width(&plain(menu_text(kind, l)).0),
             }),
-            MenuEntry::Sub(l, ..) => Some(width(&plain(crate::i18n::tc("menu", l)).0)),
+            MenuEntry::Sub(l, ..) => Some(width(&plain(menu_text(kind, l)).0)),
             MenuEntry::Sep => None,
         })
         .fold(0.0, f32::max);
@@ -987,6 +1024,7 @@ pub fn show_popup(ctx: &egui::Context, vid: egui::ViewportId) {
 /// the left, and flips to the right (a submenu to the parent's right side). All in points: the
 /// work area too (it was taken in pixels, which differ at a display or interface scale other
 /// than 100 %, #262).
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 fn place_menu(ctx: &egui::Context, at: Pos2, size: egui::Vec2, parent: Option<Rect>) -> Pos2 {
     // An off-screen test copy (MDM_OFFSCREEN) keeps its menus beside its window, off the
     // screens too (scale::work_area has none there): the nearest monitor's work area brought
@@ -1048,6 +1086,7 @@ fn bar_shares_window() -> bool {
 /// A window of its own for each menu was mapped and unmapped at every switch, and a compositor
 /// that animates new windows (Hyprland, picom with fading) faded each one in, and the last one
 /// out, every time (#277). Other menus: a window of their own, as before.
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 fn menu_viewport(kind: MenuKind, id: &str, depth: usize, bar_shared: bool) -> egui::ViewportId {
     let key = if bar_shared && kind == MenuKind::Bar {
         "menu-bar"
@@ -1058,6 +1097,7 @@ fn menu_viewport(kind: MenuKind, id: &str, depth: usize, bar_shared: bool) -> eg
 }
 
 #[allow(clippy::too_many_arguments)]
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 fn popup_level<C: Clone>(
     ctx: &egui::Context,
     kind: MenuKind,
@@ -1070,7 +1110,10 @@ fn popup_level<C: Clone>(
     depth: usize,
     hint: &dyn Fn(&C) -> Option<&'static str>,
 ) {
-    let size = menu_size(ctx, entries, hint);
+    // The bar's own titles are written for "menubar"; everything under them — and every other
+    // menu — for "menu". (Asked with `kind` alone, a title's submenu fell back to English.)
+    let text_kind = if depth == 0 { kind } else { MenuKind::Context };
+    let size = menu_size(ctx, text_kind, entries, hint);
     let kb_key = sub_key.with("kb");
     let kb: Option<usize> = ctx
         .data(|d| d.get_temp::<(Option<usize>, Option<usize>)>(kb_key))
@@ -1215,7 +1258,7 @@ fn popup_level<C: Clone>(
             } else {
                 TEXT_DISABLED_MENU()
             };
-            let (t, mn) = plain(crate::i18n::tc("menu", label));
+            let (t, mn) = plain(menu_text(text_kind, label));
             let keys = match e {
                 MenuEntry::Item(_, c, ..) | MenuEntry::Radio(_, c, ..) => hint(c),
                 _ => None,
@@ -1396,6 +1439,379 @@ fn popup_level<C: Clone>(
     }
 }
 
+// ---- macOS: menus drawn in the window ------------------------------------------------------
+
+/// A menu label as a macOS menu shows it: translations that write Windows' mnemonics as
+/// "(&S)" lose that suffix, and the `&` before the letter (AppKit menus have no mnemonics).
+#[cfg(target_os = "macos")]
+fn mac_menu_label(kind: MenuKind, label: &str) -> String {
+    let raw = menu_text(kind, label);
+    // "添加磁力链接(&M)…": drop the "(&M)" wherever it is, then plain() drops the "&"s.
+    let chars: Vec<char> = raw.chars().collect();
+    let mut cleaned = String::with_capacity(raw.len());
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == '(' && i + 3 < chars.len() && chars[i + 1] == '&' && chars[i + 3] == ')' {
+            i += 4;
+            continue;
+        }
+        cleaned.push(chars[i]);
+        i += 1;
+    }
+    plain(&cleaned).0
+}
+
+/// The height of a menu row on macOS (AppKit's menu items are 24 points). The rest of the menu
+/// keeps the Windows geometry: `SLOT` for the sizes `menu_size` computes.
+#[cfg(target_os = "macos")]
+const MAC_ITEM: f32 = 24.0;
+
+/// macOS: a popup drawn inside its window — a rounded card with a shadow, its row under the
+/// pointer filled with the accent, as AppKit's menus are.
+///
+/// A borderless window on macOS can't have a transparent background: eframe sets the painter's
+/// alpha for the whole process, from the main viewport's options (wgpu_integration.rs), so a
+/// menu window there was an opaque white rectangle — square, flat, no shadow. Drawn in the
+/// window instead it is a card. The price: it can't extend past the window; it flips and clamps
+/// inside it ([`overlay_place`]).
+#[cfg(target_os = "macos")]
+fn popup_overlay<C: Clone>(
+    ctx: &egui::Context,
+    kind: MenuKind,
+    id: &str,
+    pos: Pos2,
+    entries: &[MenuEntry<C>],
+    hint: &dyn Fn(&C) -> Option<&'static str>,
+) -> PopupResult<C> {
+    let sub_key = egui::Id::unique(("popup-sub", id));
+    if let Some(r) = keyboard(ctx, entries, sub_key) {
+        ctx.data_mut(|d| {
+            d.remove::<usize>(sub_key);
+            d.remove::<(Option<usize>, Option<usize>)>(sub_key.with("kb"));
+        });
+        return r;
+    }
+    let screen = ctx.viewport_rect();
+    // A press anywhere else closes the menu and goes no further: the backdrop sits above the
+    // window's widgets, where the menus' own windows used to be.
+    let mut away = false;
+    egui::Area::new(egui::Id::unique(("menu-backdrop", id)))
+        .order(egui::Order::Foreground)
+        .fixed_pos(screen.min)
+        .interactable(true)
+        .show(ctx, |ui| {
+            let hit = ui.interact(
+                screen,
+                egui::Id::unique(("menu-backdrop-hit", id)),
+                egui::Sense::click(),
+            );
+            if hit.clicked() || hit.secondary_clicked() {
+                away = true;
+            }
+        });
+    let mut result = None;
+    overlay_level(ctx, kind, id, 0, pos, entries, sub_key, &mut result, hint);
+    if let Some(c) = result {
+        ctx.data_mut(|d| {
+            d.remove::<usize>(sub_key);
+            d.remove::<(Option<usize>, Option<usize>)>(sub_key.with("kb"));
+        });
+        return PopupResult::Chosen(c);
+    }
+    if away {
+        ctx.data_mut(|d| {
+            d.remove::<usize>(sub_key);
+            d.remove::<(Option<usize>, Option<usize>)>(sub_key.with("kb"));
+        });
+        return PopupResult::Dismissed;
+    }
+    PopupResult::Open
+}
+
+/// The size of a macOS menu card: 30 for the check column, the widest label, room for its
+/// shortcut when one is written, the submenu arrow, 12 on the other side; 3 above and below,
+/// 24 a row and 9 a separator.
+#[cfg(target_os = "macos")]
+fn overlay_size<C>(
+    ctx: &egui::Context,
+    kind: MenuKind,
+    entries: &[MenuEntry<C>],
+    hint: &dyn Fn(&C) -> Option<&'static str>,
+) -> egui::Vec2 {
+    let painter = ctx.layer_painter(egui::LayerId::background());
+    let mut widest: f32 = 0.0;
+    let mut keys = false;
+    let mut sub = false;
+    let (mut rows, mut seps) = (0usize, 0usize);
+    for e in entries {
+        match e {
+            MenuEntry::Sep => seps += 1,
+            MenuEntry::Item(l, c, ..) | MenuEntry::Radio(l, c, ..) => {
+                rows += 1;
+                keys |= hint(c).is_some();
+                let t = mac_menu_label(kind, l);
+                widest = widest.max(menu_width(&painter, &t));
+            }
+            MenuEntry::Sub(l, _, _) => {
+                rows += 1;
+                sub = true;
+                let t = mac_menu_label(kind, l);
+                widest = widest.max(menu_width(&painter, &t));
+            }
+        }
+    }
+    let mut width = 32.0 + widest + 14.0;
+    if keys {
+        width += 56.0;
+    }
+    if sub {
+        width += 22.0;
+    }
+    vec2(
+        width.ceil().max(140.0),
+        6.0 + rows as f32 * MAC_ITEM + seps as f32 * SEP,
+    )
+}
+
+/// Where a macOS menu card goes: at `at`, flipped to the left/above when it would leave the
+/// window, then kept inside it.
+#[cfg(target_os = "macos")]
+fn overlay_place(ctx: &egui::Context, at: Pos2, size: egui::Vec2) -> Pos2 {
+    let screen = ctx.viewport_rect();
+    const MARGIN: f32 = 4.0;
+    let mut p = at;
+    if p.x + size.x > screen.max.x - MARGIN {
+        p.x = at.x - size.x;
+    }
+    if p.y + size.y > screen.max.y - MARGIN {
+        p.y = at.y - size.y;
+    }
+    let lo = screen.min + vec2(MARGIN, MARGIN);
+    let hi = screen.max - size - vec2(MARGIN, MARGIN);
+    pos2(
+        p.x.clamp(lo.x, hi.x.max(lo.x)),
+        p.y.clamp(lo.y, hi.y.max(lo.y)),
+    )
+}
+
+/// One macOS menu level: the card and its rows, then the open submenu beside it.
+#[cfg(target_os = "macos")]
+#[allow(clippy::too_many_arguments)]
+fn overlay_level<C: Clone>(
+    ctx: &egui::Context,
+    kind: MenuKind,
+    id: &str,
+    depth: usize,
+    at: Pos2,
+    entries: &[MenuEntry<C>],
+    sub_key: egui::Id,
+    result: &mut Option<C>,
+    hint: &dyn Fn(&C) -> Option<&'static str>,
+) {
+    // The bar's titles are "menubar" texts, everything under them "menu" (see popup_level).
+    let text_kind = if depth == 0 { kind } else { MenuKind::Context };
+    let size = overlay_size(ctx, text_kind, entries, hint);
+    let at = overlay_place(ctx, at, size);
+    let kb_key = sub_key.with("kb");
+    let kb: Option<usize> = ctx
+        .data(|d| d.get_temp::<(Option<usize>, Option<usize>)>(kb_key))
+        .and_then(|(a, b)| if depth == 0 { a } else { b });
+    let open_sub = if depth == 0 {
+        ctx.data(|d| d.get_temp::<usize>(sub_key))
+    } else {
+        None
+    };
+    let pointer = ctx.pointer_hover_pos();
+    let moving = ctx.input(|i| i.pointer.is_moving());
+    let released = ctx.input(|i| i.pointer.primary_released());
+    // (index, row top) of the submenu to show beside this level.
+    let mut sub_at: Option<(usize, f32)> = None;
+    let mut card = Rect::NOTHING;
+    egui::Area::new(egui::Id::unique(("macos-menu", id, depth)))
+        .order(egui::Order::Foreground)
+        .fixed_pos(at)
+        .show(ctx, |ui| {
+            let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+            card = rect;
+            let painter = ui.painter().clone();
+            // Shadow, card, hairline edge: the material AppKit gives its menus.
+            painter.add(
+                egui::epaint::Shadow {
+                    offset: [0, 6],
+                    blur: 18,
+                    spread: 0,
+                    color: Color32::from_black_alpha(46),
+                }
+                .as_shape(rect, 10.0),
+            );
+            painter.rect_filled(rect, 10.0, POPUP_BG());
+            painter.rect_stroke(
+                rect,
+                10.0,
+                Stroke::new(1.0, POPUP_BORDER()),
+                egui::StrokeKind::Inside,
+            );
+            let o = rect.min;
+            let w = rect.width();
+            let node = ui.interact(
+                rect,
+                egui::Id::unique(("macos-menu-node", id, depth)),
+                egui::Sense::hover(),
+            );
+            winui::expose(&node, egui::Role::Menu, "", true, None);
+            let items = ui.new_child(egui::UiBuilder::new().accessibility_parent(node.id));
+            let mut y = o.y + 3.0;
+            for (i, e) in entries.iter().enumerate() {
+                if matches!(e, MenuEntry::Sep) {
+                    winui::fill(
+                        &painter,
+                        o.x + 12.0,
+                        y + 4.0,
+                        o.x + w - 12.0,
+                        y + 4.5,
+                        POPUP_SEP(),
+                    );
+                    y += SEP;
+                    continue;
+                }
+                let (label, enabled, checked) = match e {
+                    MenuEntry::Item(l, _, en, ch) | MenuEntry::Radio(l, _, en, ch) => {
+                        (*l, *en, *ch)
+                    }
+                    MenuEntry::Sub(l, en, _) => (*l, *en, false),
+                    MenuEntry::Sep => unreachable!(),
+                };
+                let slot =
+                    Rect::from_min_max(pos2(o.x + 4.0, y), pos2(o.x + w - 4.0, y + MAC_ITEM));
+                let hovered = pointer.is_some_and(|p| slot.contains(p));
+                // The pointer moving over a row takes the highlight from the keyboard.
+                if hovered && moving && kb.is_some() && kb != Some(i) {
+                    ctx.data_mut(|d| {
+                        let (a, b) = d
+                            .get_temp::<(Option<usize>, Option<usize>)>(kb_key)
+                            .unwrap_or_default();
+                        d.insert_temp(
+                            kb_key,
+                            if depth == 0 {
+                                (Some(i), b)
+                            } else {
+                                (a, Some(i))
+                            },
+                        );
+                    });
+                }
+                let lit = kb.map_or(hovered, |k| k == i) || open_sub == Some(i);
+                let (ink, quiet) = if !enabled {
+                    (TEXT_DISABLED_MENU(), TEXT_DISABLED_MENU())
+                } else if lit {
+                    (Color32::WHITE, Color32::from_white_alpha(196))
+                } else {
+                    (TEXT(), TEXT_DISABLED_MENU())
+                };
+                if lit {
+                    painter.rect_filled(slot, 5.0, ACCENT());
+                }
+                let t = mac_menu_label(text_kind, label);
+                let keys = match e {
+                    MenuEntry::Item(_, c, ..) | MenuEntry::Radio(_, c, ..) => hint(c),
+                    _ => None,
+                };
+                let t = if keys.is_some() {
+                    without_shortcut(&t).to_owned()
+                } else {
+                    t
+                };
+                let resp = items.interact(
+                    slot,
+                    egui::Id::unique(("macos-menu-item", id, depth, i)),
+                    winui::pointer_only(),
+                );
+                let (role, on) = match e {
+                    MenuEntry::Radio(..) => (egui::Role::MenuItemRadio, Some(checked)),
+                    MenuEntry::Item(..) if checked => (egui::Role::MenuItemCheckBox, Some(true)),
+                    _ => (egui::Role::MenuItem, None),
+                };
+                winui::expose(&resp, role, &t, enabled, on);
+                let baseline = y + 16.5;
+                // The check column, 30 wide, as AppKit's menus have it.
+                let _ = text_font(&painter, winui::segoe(), o.x + 30.0, baseline, &t, ink);
+                if checked {
+                    if matches!(e, MenuEntry::Radio(..)) {
+                        painter.circle_filled(pos2(o.x + 15.0, baseline - 4.5), 2.6, ink);
+                    } else {
+                        painter.line(
+                            vec![
+                                pos2(o.x + 11.0, baseline - 4.5),
+                                pos2(o.x + 13.5, baseline - 2.0),
+                                pos2(o.x + 18.5, baseline - 7.5),
+                            ],
+                            Stroke::new(1.4, ink),
+                        );
+                    }
+                }
+                if let Some(k) = keys {
+                    winui::text_right(&painter, o.x + w - 16.0, baseline, &key_label(k), quiet);
+                }
+                match e {
+                    MenuEntry::Item(_, c, ..) | MenuEntry::Radio(_, c, ..) => {
+                        if enabled && hovered && released {
+                            *result = Some(c.clone());
+                        }
+                        // Resting on a row closes the submenu open beside the parent.
+                        if depth == 0 && hovered {
+                            ctx.data_mut(|d| d.remove::<usize>(sub_key));
+                        }
+                    }
+                    MenuEntry::Sub(..) => {
+                        // The arrow at the trailing edge, pointing where the submenu opens.
+                        let cx = o.x + w - 13.0;
+                        let cy = baseline - 4.5;
+                        painter.line(
+                            vec![
+                                pos2(cx - 4.0, cy),
+                                pos2(cx, cy + 4.0),
+                                pos2(cx - 4.0, cy + 8.0),
+                            ],
+                            Stroke::new(1.2, ink),
+                        );
+                        if enabled && depth == 0 && hovered {
+                            ctx.data_mut(|d| d.insert_temp(sub_key, i));
+                        }
+                        if enabled && (open_sub == Some(i) || hovered) {
+                            sub_at = Some((i, y - o.y));
+                        }
+                    }
+                    MenuEntry::Sep => unreachable!(),
+                }
+                y += MAC_ITEM;
+            }
+        });
+    if let Some((i, row_y)) = sub_at
+        && let MenuEntry::Sub(_, _, children) = &entries[i]
+    {
+        let child = overlay_size(ctx, MenuKind::Context, children, hint);
+        let screen = ctx.viewport_rect();
+        let mut x = card.max.x + 2.0;
+        if x + child.x > screen.max.x - 4.0 {
+            x = card.min.x - child.x - 2.0;
+        }
+        let y = (card.min.y + row_y + 3.0)
+            .min(screen.max.y - child.y - 4.0)
+            .max(screen.min.y + 4.0);
+        overlay_level(
+            ctx,
+            kind,
+            id,
+            depth + 1,
+            pos2(x, y),
+            children,
+            sub_key,
+            result,
+            hint,
+        );
+    }
+}
+
 // ---- toolbar -------------------------------------------------------------------------------
 
 pub enum ToolbarEvent {
@@ -1404,10 +1820,10 @@ pub enum ToolbarEvent {
     Drop(usize, Pos2),
 }
 
-/// Paint the etch (y 20, 21) and the toolbar band (y 22–91).
+/// Paint the etch and the toolbar band below it.
 /// Client y where the panes (Categories, list) start: below the toolbar band, in both modes.
 pub fn pane_top() -> f32 {
-    70.0
+    crate::theme::metrics().toolbar_height + 2.0
 }
 
 pub fn toolbar(
@@ -1428,9 +1844,13 @@ pub fn toolbar(
         top + 1.0,
         c.toolbar_line_light,
     );
-    // Both modes (light-main.md; dark changes only colours): Tahoma labels, 66 px buttons, a
-    // 68 px band.
-    let (font, base_w, band_h) = (winui::tahoma(), 66.0f32, 68.0);
+    let metrics = crate::theme::metrics();
+    let (font, base_w, band_h, icon_size) = (
+        winui::tahoma(),
+        metrics.toolbar_button_width,
+        metrics.toolbar_height,
+        metrics.toolbar_icon,
+    );
     let band = Rect::from_min_size(pos2(o.x, top + 2.0), vec2(width, band_h));
     p.rect_filled(band, 0.0, WINDOW_BG());
     let mut x = o.x;
@@ -1480,7 +1900,7 @@ pub fn toolbar(
             // band. Beyond IDM (which lights only the button part, user
             // request 2026-10-29): a drop-down is a split button — the part under the pointer is
             // lit (pressed while the mouse is down), the other part faintly, a 1 px divider between.
-            let h = 65.0;
+            let h = band_h - 3.0;
             let (hot_c, faint_c, down_c, edge_c, border_c) = (
                 c.toolbar_hot,
                 c.toolbar_hot_faint,
@@ -1526,12 +1946,8 @@ pub fn toolbar(
             }
         }
         let cx = x + bw / 2.0;
-        let icon_rect = Rect::from_min_size(
-            pos2(cx - 16.0, top + 9.5 + 20.0 - 20.0 + 0.0),
-            vec2(32.0, 32.0),
-        )
-        .translate(vec2(0.0, 0.0));
-        let icon_rect = Rect::from_center_size(pos2(cx, top + 25.5), icon_rect.size());
+        let icon_center_y = band.top() + 7.5 + icon_size / 2.0;
+        let icon_rect = Rect::from_center_size(pos2(cx, icon_center_y), vec2(icon_size, icon_size));
         // Placed, not mirrored: an icon keeps its look.
         icon.image(*enabled).paint_at(ui, winui::rect(icon_rect));
         // Label: x = btn.x + floor((w − ext)/2), +1 for drop-downs, last ink row 58. Every label
@@ -1540,7 +1956,7 @@ pub fn toolbar(
         if dropdown {
             lx += 1.0;
         }
-        let ly = top + 58.0;
+        let ly = band.bottom() - 12.0;
         text_font(
             &p,
             font.clone(),
@@ -1551,7 +1967,7 @@ pub fn toolbar(
         );
         if dropdown {
             let ax = x + bw + 4.0;
-            let ay = top + 31.0;
+            let ay = band.top() + band_h * 0.426;
             // The split's divider at rest (user choice 2026-10-29, "B"): a classic etched
             // toolbar separator — a shadow line and a highlight beside it — 24 px tall, centred
             // on the arrow; the hover draws the full divider instead.

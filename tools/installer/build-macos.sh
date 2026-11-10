@@ -18,7 +18,23 @@ version="$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' "$root/Cargo.toml" | head 
 [ -n "$version" ] || { echo "no version in Cargo.toml" >&2; exit 1; }
 programs=(misterdownloadmanager misterdownloadmanager-nmhost misterdownloadmanager-cli misterdownloadmanager-mcp)
 # Rust's target and the processor's name in the release files (as macOS calls it), with ':'.
-targets=(aarch64-apple-darwin:arm64 x86_64-apple-darwin:x86_64)
+# MDM_MACOS_TARGETS picks a subset (arm64 / x86_64; default both): a personal Apple Silicon
+# build needs no Intel target and finishes in half the time.
+case "${MDM_MACOS_TARGETS:-all}" in
+  all)
+    targets=(aarch64-apple-darwin:arm64 x86_64-apple-darwin:x86_64)
+    ;;
+  arm64)
+    targets=(aarch64-apple-darwin:arm64)
+    ;;
+  x86_64)
+    targets=(x86_64-apple-darwin:x86_64)
+    ;;
+  *)
+    echo "MDM_MACOS_TARGETS: arm64, x86_64 or all (not '${MDM_MACOS_TARGETS}')" >&2
+    exit 1
+    ;;
+esac
 
 if [ "${1:-}" != "--no-build" ]; then
   for pair in "${targets[@]}"; do

@@ -721,7 +721,9 @@ pub fn progress_bar(p: &Painter, rc: Rect, fraction: Option<f32>, time: f64) {
     // Windows 8: a bordered bar, filled.
     if crate::theme::current().controls.progress == crate::palette::ProgressLook::Bar {
         let border = crate::theme::metrics().border;
-        p.rect_filled(rect(rc), 0.0, c.meter_track);
+        let mac = mac_look();
+        let radius = if mac { rc.height() / 2.0 } else { 0.0 };
+        p.rect_filled(rect(rc), radius, c.meter_track);
         let inner = rc.shrink(border);
         if to > from {
             let w = inner.width();
@@ -730,13 +732,13 @@ pub fn progress_bar(p: &Painter, rc: Rect, fraction: Option<f32>, time: f64) {
                     pos2(inner.left() + from * w, inner.top()),
                     pos2(inner.left() + to * w, inner.bottom()),
                 )),
-                0.0,
+                (radius - border).max(0.0),
                 c.progress_bar,
             );
         }
         p.rect_stroke(
             rect(rc),
-            0.0,
+            radius,
             Stroke::new(border, c.meter_edge),
             StrokeKind::Inside,
         );
@@ -1757,7 +1759,7 @@ impl Shine {
     fn of_button(look: crate::palette::ButtonLook) -> Option<Self> {
         use crate::palette::ButtonLook as B;
         match look {
-            B::Fluent | B::Breeze => None,
+            B::Fluent | B::Breeze | B::Mac => None,
             B::Luna => Some(Shine::Luna),
             B::Aero => Some(Shine::Aero),
             B::Aqua => Some(Shine::Aqua),
@@ -1864,13 +1866,21 @@ pub fn field_frame(p: &Painter, rc: Rect, look: FieldLook) {
         Stroke::new(crate::theme::metrics().border, border),
         StrokeKind::Inside,
     );
-    hline(
-        p,
-        rc.left() + radius,
-        rc.right() - radius - 1.0,
-        rc.bottom() - 1.0,
-        bottom,
-    );
+    if crate::theme::current().controls.field_focus != crate::palette::FieldFocus::Ring {
+        hline(
+            p,
+            rc.left() + radius,
+            rc.right() - radius - 1.0,
+            rc.bottom() - 1.0,
+            bottom,
+        );
+    }
+}
+
+/// Whether the theme asks for the modern macOS controls: flat faces, hairline edges and one
+/// accent for the default control (`palette::ButtonLook::Mac`).
+pub fn mac_look() -> bool {
+    crate::theme::current().controls.button == crate::palette::ButtonLook::Mac
 }
 
 /// How far along something is, as IDM shows a download: its green fill on a track (themed: the
@@ -3199,6 +3209,21 @@ pub fn caption_gap(
 /// Group box frame (`rc` on screen) with a gap in its top line for a checkbox caption (`gap` =
 /// English x range, inclusive pixels).
 pub fn group_box(p: &Painter, rc: Rect, gap: Option<(f32, f32)>) {
+    if mac_look() {
+        // A card whose top edge starts below the caption, as macOS 11+ draws its sections.
+        let top = rc.top() + if gap.is_some() { 8.0 } else { 0.0 };
+        let card = Rect::from_min_max(
+            pos2(rc.left(), top),
+            pos2(rc.right() - 1.0, rc.bottom() - 1.0),
+        );
+        p.rect_stroke(
+            card,
+            8.0,
+            Stroke::new(1.0, HEADER_LINE()),
+            StrokeKind::Inside,
+        );
+        return;
+    }
     let (l, t, rr, b) = (rc.left(), rc.top(), rc.right() - 1.0, rc.bottom() - 1.0);
     let gap = gap.map(|(g0, g1)| {
         let (a, b) = (mcol(g0), mcol(g1));
@@ -3730,7 +3755,7 @@ fn paint_button(
     let radius = match look {
         _ if shape == Shape::DropDown => control_radius(),
         _ if part => control_radius().min((rc.height() / 3.0).floor()),
-        ButtonLook::Fluent | ButtonLook::Breeze => control_radius(),
+        ButtonLook::Fluent | ButtonLook::Breeze | ButtonLook::Mac => control_radius(),
         ButtonLook::Luna | ButtonLook::Aero => m.button_radius,
         // Mac OS X's push buttons are round at the ends.
         ButtonLook::Aqua => (rc.height() / 2.0).floor(),
@@ -3745,7 +3770,7 @@ fn paint_button(
         );
         // The bottom edge: a push button's and a drop-down's 3 points in from its ends, a small
         // part's from its corners (none on one too low for it).
-        if shape != Shape::Small || rc.height() >= 14.0 {
+        if look != ButtonLook::Mac && (shape != Shape::Small || rc.height() >= 14.0) {
             let inset = if shape == Shape::Small { radius } else { 3.0 };
             hline(
                 p,
@@ -3829,6 +3854,33 @@ fn button_colors_in(
         return Face {
             border: crate::derive::shade(face.fill, -0.12),
             ..face
+        };
+    }
+    // macOS 11+: a flat face with a hairline edge; the default button is the accent's.
+    if look == crate::palette::ButtonLook::Mac && kind != ButtonKind::Accent {
+        if kind == ButtonKind::Default {
+            return button_colors_in(ButtonKind::Accent, state, c, look);
+        }
+        let (fill, border, text) = match kind {
+            ButtonKind::Disabled => (c.field_disabled, c.button_disabled_border, c.text_disabled),
+            _ => {
+                let tint = match state {
+                    State::Pressed => 0.12,
+                    State::Hot => 0.05,
+                    _ => 0.0,
+                };
+                (
+                    crate::derive::mix(c.field, c.text, tint),
+                    c.button_border,
+                    c.text,
+                )
+            }
+        };
+        return Face {
+            fill,
+            border,
+            bottom: border,
+            text,
         };
     }
     if kind == ButtonKind::Accent {
@@ -4287,6 +4339,35 @@ pub fn check_box_glyph(p: &Painter, rc: Rect, checked: bool, state: State) {
         }
         return;
     }
+    // macOS 11+: a flat box, white at rest; checked, the accent filled with a white tick.
+    if crate::theme::current().controls.check == crate::palette::CheckLook::Mac {
+        let m = crate::theme::metrics();
+        if checked {
+            p.rect_filled(rc, m.check_radius, fluent_accent(state));
+            p.line(
+                vec![
+                    pos2(rc.left() + 3.0, rc.top() + 6.5),
+                    pos2(rc.left() + 5.5, rc.top() + 9.0),
+                    pos2(rc.left() + 10.0, rc.top() + 4.0),
+                ],
+                Stroke::new(1.8, fluent_mark()),
+            );
+        } else {
+            let (fill_c, border) = fluent_box(state);
+            p.rect_filled(
+                rc,
+                m.check_radius,
+                fill_c.unwrap_or(crate::theme::colors().field),
+            );
+            p.rect_stroke(
+                rc,
+                m.check_radius,
+                Stroke::new(m.border, border),
+                StrokeKind::Inside,
+            );
+        }
+        return;
+    }
     // GNOME: a 2-point border at rest (its inside tinted under the pointer), the accent filled
     // with a light tick, 2 points wide, when checked.
     if crate::theme::current().controls.check == crate::palette::CheckLook::Adwaita {
@@ -4554,6 +4635,15 @@ pub fn radio_light_until(
         p.circle_stroke(c, 6.0, Stroke::new(1.0, edge));
         if selected {
             p.circle_filled(c, 2.5, breeze_mark(state));
+        }
+    } else if crate::theme::current().controls.check == crate::palette::CheckLook::Mac {
+        if selected {
+            p.circle_filled(c, 6.5, fluent_accent(state));
+            p.circle_filled(c, 2.6, fluent_mark());
+        } else {
+            let (fill_c, border) = fluent_box(state);
+            p.circle_filled(c, 6.5, fill_c.unwrap_or(crate::theme::colors().field));
+            p.circle_stroke(c, 6.5, Stroke::new(crate::theme::metrics().border, border));
         }
     } else if selected {
         p.circle_filled(c, 6.5, fluent_accent(state));
@@ -4967,6 +5057,10 @@ pub fn radio_keys(ui: &Ui, group: &[Response]) -> Option<usize> {
 /// Etched horizontal separator in English rect `x, y, w × 2`: `#a0a0a0` over `#ffffff`, the
 /// white line 1 px longer so it covers the far end.
 pub fn etched_h(p: &Painter, x: f32, y: f32, w: f32) {
+    if mac_look() {
+        hline(p, x, x + w, y, HEADER_LINE());
+        return;
+    }
     let x = rect(Rect::from_min_size(pos2(x, y), vec2(w, 2.0))).left();
     hline(p, x, x + w - 2.0, y, ETCH_SHADOW());
     px(p, x + w - 1.0, y, ETCH_LIGHT());
@@ -4975,6 +5069,10 @@ pub fn etched_h(p: &Painter, x: f32, y: f32, w: f32) {
 
 /// Etched vertical separator in English rect `x, y, 2 × h`.
 pub fn etched_v(p: &Painter, x: f32, y: f32, h: f32) {
+    if mac_look() {
+        vline(p, x, y, y + h, HEADER_LINE());
+        return;
+    }
     let x = rect(Rect::from_min_size(pos2(x, y), vec2(2.0, h))).left();
     vline(p, x, y, y + h - 2.0, ETCH_SHADOW());
     px(p, x, y + h - 1.0, ETCH_LIGHT());
@@ -5070,6 +5168,7 @@ pub fn tabs_light(
     let p = ui.painter().clone();
     let border = HEADER_LINE();
     let shadow = TAB_UNSELECTED();
+    let mac = mac_look();
     // Pane: x rc.left ..= right − 3, y top + 20 ..= bottom − 2, then a 2 px / 1 px shadow.
     let (l, t, rr, b) = (
         rc.left(),
@@ -5077,13 +5176,24 @@ pub fn tabs_light(
         rc.right() - 3.0,
         rc.bottom() - 2.0,
     );
-    fill(&p, l, t, rr, b, LIGHT_PAGE());
-    hline(&p, l, rr, t, border);
-    hline(&p, l, rr, b, border);
-    vline(&p, l, t, b, border);
-    vline(&p, rr, t, b, border);
-    fill(&p, rr + 1.0, t, rr + 2.0, b + 1.0, shadow);
-    hline(&p, l, rr + 2.0, b + 1.0, shadow);
+    if mac {
+        let card = Rect::from_min_max(pos2(l, t), pos2(rr, b));
+        p.rect_filled(card, 8.0, LIGHT_PAGE());
+        p.rect_stroke(
+            card,
+            8.0,
+            Stroke::new(crate::theme::metrics().border, border),
+            StrokeKind::Inside,
+        );
+    } else {
+        fill(&p, l, t, rr, b, LIGHT_PAGE());
+        hline(&p, l, rr, t, border);
+        hline(&p, l, rr, b, border);
+        vline(&p, l, t, b, border);
+        vline(&p, rr, t, b, border);
+        fill(&p, rr + 1.0, t, rr + 2.0, b + 1.0, shadow);
+        hline(&p, l, rr + 2.0, b + 1.0, shadow);
+    }
     // (selected range, unselected range, label x, label shown), from the client origin.
     type Placed = ((f32, f32), (f32, f32), f32, String);
     let placed: Vec<Placed> = if tabs.iter().all(|t| crate::i18n::t(t.label) == t.label) {
@@ -5154,22 +5264,40 @@ pub fn tabs_light(
                 }
             }
         }
-        let face = if sel {
-            LIGHT_PAGE()
-        } else if resp.hovered() {
-            TAB_HOT()
+        if mac {
+            // A segmented control: the chosen tab in the accent, the others quiet.
+            let face = if sel {
+                Some(crate::theme::colors().accent)
+            } else if resp.hovered() {
+                Some(TAB_HOT())
+            } else {
+                None
+            };
+            if let Some(face) = face {
+                p.rect_filled(
+                    Rect::from_min_max(pos2(x0, y0), pos2(x1 + 1.0, t - 2.0)),
+                    6.0,
+                    face,
+                );
+            }
         } else {
-            shadow
-        };
-        fill(&p, x0, y0, x1, t, face);
-        hline(&p, x0 + 1.0, x1 - 1.0, y0, border);
-        vline(&p, x0, y0 + 1.0, t, border);
-        vline(&p, x1, y0 + 1.0, t, border);
-        if sel {
-            // Open at the bottom: the pane's top line stops at the tab.
-            hline(&p, x0 + 1.0, x1 - 1.0, t, LIGHT_PAGE());
-        } else {
-            hline(&p, x0, x1, t, border);
+            let face = if sel {
+                LIGHT_PAGE()
+            } else if resp.hovered() {
+                TAB_HOT()
+            } else {
+                shadow
+            };
+            fill(&p, x0, y0, x1, t, face);
+            hline(&p, x0 + 1.0, x1 - 1.0, y0, border);
+            vline(&p, x0, y0 + 1.0, t, border);
+            vline(&p, x1, y0 + 1.0, t, border);
+            if sel {
+                // Open at the bottom: the pane's top line stops at the tab.
+                hline(&p, x0 + 1.0, x1 - 1.0, t, LIGHT_PAGE());
+            } else {
+                hline(&p, x0, x1, t, border);
+            }
         }
         let base = if sel {
             rc.top() + 13.0
@@ -5177,7 +5305,12 @@ pub fn tabs_light(
             rc.top() + 15.0
         };
         let full = crate::i18n::t(tab.label);
-        let drawn = text(&p, o.x + label_x, base, shown, LIGHT_TEXT());
+        let ink = if mac && sel {
+            Color32::WHITE
+        } else {
+            LIGHT_TEXT()
+        };
+        let drawn = text(&p, o.x + label_x, base, shown, ink);
         // Over the tab's face (drawn before it, the face hid it).
         show_focus(ui, &resp, hit.shrink(2.0));
         if shown != full {

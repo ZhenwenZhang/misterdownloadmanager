@@ -62,14 +62,22 @@ impl Properties {
         icons: &mut ShellIcons,
         item: &Item,
     ) -> Outcome<Changes> {
+        let mac = winui::mac_look();
+        let size = if mac { [520.0, 500.0] } else { [477.0, 420.0] };
         let outcome = window(
             ctx,
             &format!("properties-{}", self.id),
             "File Properties",
-            [477.0, 420.0],
+            size,
             false,
             LIGHT_BG(),
-            |ui, o| self.body(ui, o, icons, item),
+            |ui, o| {
+                if mac {
+                    self.body_mac(ui, o, icons, item)
+                } else {
+                    self.body(ui, o, icons, item)
+                }
+            },
         );
         match outcome {
             Outcome::Done(()) => {
@@ -410,9 +418,29 @@ impl Properties {
             385.0,
             120.0,
         )[0];
+        self.ending(
+            ui,
+            item,
+            complete,
+            editable,
+            r(o, open_x, 390.0, open_w, 21.0),
+            r(o, 393.0, 390.0, 73.0, 21.0),
+        )
+    }
+
+    /// The bottom row both bodies share: Open (a finished file), OK, Enter and Escape.
+    fn ending(
+        &mut self,
+        ui: &mut Ui,
+        item: &Item,
+        complete: bool,
+        editable: bool,
+        open_rc: egui::Rect,
+        ok_rc: egui::Rect,
+    ) -> Outcome<()> {
         let open = winui::button_light(
             ui,
-            r(o, open_x, 390.0, open_w, 21.0),
+            open_rc,
             // i18n: verb: opens the file
             "Open",
             if complete {
@@ -432,14 +460,7 @@ impl Properties {
         if open && complete {
             crate::dialogs::open_file(&item.dest);
         }
-        let ok = winui::button_light(
-            ui,
-            r(o, 393.0, 390.0, 73.0, 21.0),
-            "OK",
-            ButtonKind::Default,
-            false,
-        )
-        .clicked();
+        let ok = winui::button_light(ui, ok_rc, "OK", ButtonKind::Default, false).clicked();
         let address_ok = !editable
             || url::Url::parse(self.address.trim()).is_ok_and(|u| mdm_engine::supported(&u));
         if winui::escape_pressed(ui) {
@@ -455,6 +476,292 @@ impl Properties {
         } else {
             Outcome::Open
         }
+    }
+
+    /// macOS' form: one right-aligned label column, a 24px grid, buttons along the bottom.
+    /// Same fields and same Changes as the Windows body above.
+    fn body_mac(
+        &mut self,
+        ui: &mut Ui,
+        o: Pos2,
+        icons: &mut ShellIcons,
+        item: &Item,
+    ) -> Outcome<()> {
+        let p = ui.painter().clone();
+        let complete = item.status == Status::Complete;
+        let running = item.live.is_some();
+        let editable = !complete && !running;
+        let ext = Path::new(&item.file_name)
+            .extension()
+            .map(|e| e.to_string_lossy().to_ascii_lowercase())
+            .unwrap_or_default();
+        icons.paint(ui, IconKey::ExtLarge(ext.clone()), o + vec2(16.0, 14.0));
+        let right = 504.0;
+        let labels = [
+            "Type:",
+            "Status:",
+            "Size:",
+            "Server:",
+            "Save To:",
+            "Address:",
+            "Description:",
+            "Referer:",
+        ];
+        let label_right = labels
+            .iter()
+            .map(|l| 16.0 + winui::text_width(&p, crate::i18n::t(l)).ceil() + 8.0)
+            .fold(104.0_f32, f32::max)
+            .min(190.0);
+        let vx = label_right + 12.0;
+        let fit = |ui: &mut Ui, x: f32, base: f32, s: &str| {
+            let (rect, cut) =
+                winui::text_fit(&p, o.x + x, o.y + base, s, LIGHT_TEXT(), o.x + right);
+            winui::copyable(ui, rect, ("props", base as i32), s, cut);
+        };
+        let label = |top: f32, s: &str| {
+            winui::text_right(
+                &p,
+                o.x + label_right,
+                o.y + top + 16.0,
+                crate::i18n::t(s),
+                LIGHT_TEXT(),
+            );
+        };
+        fit(ui, 58.0, 34.0, &item.file_name);
+        winui::etched_h(&p, o.x + 16.0, o.y + 52.0, right - 16.0);
+        let size = item.size.map_or_else(String::new, |s| {
+            crate::i18n::fmt(
+                crate::i18n::t("{size} ({bytes} Bytes)"),
+                &[
+                    ("size", &crate::dialogs::dialog_size(s)),
+                    ("bytes", &crate::i18n::integer(s)),
+                ],
+            )
+        });
+        label(62.0, "Type:");
+        // i18n: label before the kind of file ("ZIP File")
+        fit(ui, vx, 78.0, &file_type(&item.file_name, &ext));
+        label(88.0, "Status:");
+        fit(ui, vx, 104.0, &item.status_text());
+        label(114.0, "Size:");
+        fit(ui, vx, 130.0, &size);
+        label(140.0, "Server:");
+        let seen = item
+            .snap
+            .as_ref()
+            .and_then(|s| s.server.as_ref())
+            .map(crate::whereis::Seen::from)
+            .or_else(|| item.server.clone());
+        if item.torrent.is_some() || item.video.is_some() || item.gallery.is_some() {
+            // i18n: Properties, where a download's server is: a torrent, a video or a gallery has no single server of MDM's own
+            fit(
+                ui,
+                vx,
+                156.0,
+                crate::i18n::t("not one server (peers, or a helper's)"),
+            );
+        } else if seen.is_some() {
+            crate::whereis::line(
+                ui,
+                o.x + vx,
+                o.y + 156.0,
+                o.x + right,
+                seen.as_ref(),
+                &format!("props-{}", self.id),
+            );
+        } else {
+            // i18n: Properties, where a download's server is: not seen yet (it hasn't run)
+            fit(ui, vx, 156.0, crate::i18n::t("known once it has run"));
+        }
+        label(170.0, "Save To:");
+        let dest = match &self.move_to {
+            Some(dir) => dir.join(&item.file_name),
+            None => item.dest.clone(),
+        };
+        readonly(
+            ui,
+            r(o, vx, 168.0, 432.0 - vx, 24.0),
+            &dest.display().to_string(),
+        );
+        let movable = !running && (complete || item.downloaded == 0);
+        let pick = winui::button_light(
+            ui,
+            r(o, 440.0, 168.0, 64.0, 24.0),
+            // i18n: verb: move the file to another folder
+            "Move",
+            if movable {
+                ButtonKind::Normal
+            } else {
+                ButtonKind::Disabled
+            },
+            false,
+        );
+        let pick = winui::why_disabled(
+            pick,
+            !movable,
+            if running {
+                // i18n: tooltip of the greyed Move button in File Properties
+                crate::i18n::mark("Pause the download first")
+            } else {
+                // i18n: tooltip of the greyed Move button in File Properties
+                crate::i18n::mark("Only a finished download, or one not started yet, can be moved")
+            },
+        )
+        .clicked();
+        if pick && movable {
+            let title = crate::i18n::t("Move to folder").to_owned();
+            let from = item.dest.parent().unwrap_or(Path::new(".")).to_path_buf();
+            winui::start_pick(ui.ctx(), &format!("move-to-{}", self.id), move || {
+                rfd::FileDialog::new()
+                    .set_title(title)
+                    .set_directory(from)
+                    .pick_folder()
+            });
+        }
+        if let Some(dir) = winui::picked(ui.ctx(), &format!("move-to-{}", self.id)) {
+            self.move_to = Some(dir);
+        }
+        label(202.0, "Address:");
+        if editable {
+            let edit = winui::edit_light(
+                ui,
+                r(o, vx, 200.0, right - vx, 24.0),
+                &mut self.address,
+                true,
+                false,
+            );
+            if edit.changed() {
+                self.error = None;
+            }
+        } else {
+            readonly(ui, r(o, vx, 200.0, right - vx, 24.0), &self.address);
+        }
+        label(234.0, "Description:");
+        winui::edit_light(
+            ui,
+            r(o, vx, 232.0, right - vx, 24.0),
+            &mut self.description,
+            true,
+            false,
+        );
+        winui::etched_h(&p, o.x + 16.0, o.y + 262.0, right - 16.0);
+        text(
+            &p,
+            o.x + 16.0,
+            o.y + 282.0,
+            crate::i18n::t("The web page from which this file was obtained:"),
+            LIGHT_TEXT(),
+        );
+        // i18n: the web page is not known
+        let page = item
+            .context
+            .referer
+            .as_deref()
+            .unwrap_or(crate::i18n::t("Unknown"));
+        fit(ui, 16.0, 300.0, page);
+        label(318.0, "Referer:");
+        winui::edit_light(
+            ui,
+            r(o, vx, 316.0, right - vx, 24.0),
+            &mut self.referer,
+            editable,
+            false,
+        );
+        // i18n: noun: label before the user name
+        winui::text_right(
+            &p,
+            o.x + label_right,
+            o.y + 364.0,
+            crate::i18n::t("Login"),
+            LIGHT_TEXT(),
+        );
+        winui::edit_light(
+            ui,
+            r(o, vx, 348.0, 170.0, 24.0),
+            &mut self.login,
+            editable,
+            false,
+        );
+        winui::text_right(
+            &p,
+            o.x + label_right,
+            o.y + 394.0,
+            crate::i18n::t("Password"),
+            LIGHT_TEXT(),
+        );
+        password(
+            ui,
+            r(o, vx, 378.0, 170.0, 24.0),
+            &mut self.password,
+            editable,
+        );
+        if let Some(service) = self.route.service(&item.url) {
+            let mut on = !self.direct;
+            let caption = crate::i18n::fmt(
+                // i18n: File Properties: a check box beside the login, ticked when the download goes through the user's debrid account; {service} the service, "Real-Debrid". Unticked: downloaded directly
+                crate::i18n::t("Through {service}"),
+                &[("service", service)],
+            );
+            winui::checkbox_light_until(
+                ui,
+                o + vec2(vx + 186.0, 350.0),
+                &mut on,
+                &caption,
+                editable,
+                Some(o.x + right),
+            );
+            self.direct = !on;
+        }
+        winui::etched_h(&p, o.x + 16.0, o.y + 410.0, right - 16.0);
+        if !complete {
+            let last = item.last_try.clone().unwrap_or_default();
+            let last_try = crate::i18n::fmt(
+                // i18n: {last} = the date and time of the last attempt to download
+                crate::i18n::t("Last try  {last}"),
+                &[("last", &last)],
+            );
+            fit(ui, 16.0, 428.0, &last_try);
+        }
+        if let Some(e) = &self.error {
+            winui::fit(
+                ui,
+                &p,
+                o.x + 16.0,
+                o.y + 450.0,
+                e,
+                winui::ERROR(),
+                o.x + right,
+                "props-error",
+            );
+        } else if !complete {
+            let result = item.error.clone().unwrap_or_else(|| item.status_text());
+            let (rect, cut) = winui::text_fit(
+                &p,
+                o.x + 16.0,
+                o.y + 450.0,
+                &crate::i18n::fmt(
+                    // i18n: {result} = how the last attempt ended (a status or an error message)
+                    crate::i18n::t("Result: {result}"),
+                    &[("result", &result)],
+                ),
+                LIGHT_TEXT(),
+                o.x + right,
+            );
+            if cut {
+                winui::full_on_hover(ui, rect, "props-result", &result);
+            }
+        }
+        let open_w = (winui::text_width(&p, crate::i18n::t("Open")) + 24.0)
+            .ceil()
+            .max(73.0);
+        self.ending(
+            ui,
+            item,
+            complete,
+            editable,
+            r(o, 16.0, 462.0, open_w, 26.0),
+            r(o, right - 73.0, 462.0, 73.0, 26.0),
+        )
     }
 }
 

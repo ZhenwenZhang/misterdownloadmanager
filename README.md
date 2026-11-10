@@ -1,5 +1,10 @@
 # Mister Download Manager
 
+> **Unofficial macOS fork.** This repository is a personal fork that gives the macOS build a
+> native shell (main window, menus, dialogs and localisation). It is not endorsed by the
+> upstream author, and the same GPL-3.0-or-later licence applies. The changes and the build
+> steps are in [FORK.md](FORK.md).
+
 <p align="center">
   <img src="docs/images/logo.png" alt="Mister Download Manager's logo" width="160">
 </p>

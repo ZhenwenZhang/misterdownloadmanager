@@ -58,6 +58,7 @@ mod torrentdlg;
 mod torrents;
 mod transfer;
 mod tray;
+mod uitest;
 #[cfg(unix)]
 mod unix;
 mod update;
@@ -71,7 +72,7 @@ mod winui;
 mod xdgicons;
 
 /// The main window's title (dialogs find their owner by it).
-pub const MAIN_TITLE: &str = concat!("Mister Download Manager ", env!("CARGO_PKG_VERSION"));
+pub const MAIN_TITLE: &str = concat!("Mister Download Manager ", env!("MDM_BUILD_DATE"));
 
 /// The app icon (art/, made with ChatGPT; sizes by tools/icon/build_icon.py), for windows that
 /// show one as IDM's do: the 256 px size, which the system scales down for the title bar, the
@@ -363,12 +364,16 @@ fn app() -> eframe::Result {
         .window
         .filter(|_| scale::test_zoom().is_none() && !offscreen())
         .filter(|[x, y, w, h]| *w >= 600 && *h >= 300 && on_a_screen(x + 40, y + 10));
-    let size = saved.map_or([930.0 * z, 470.0 * z], |[_, _, w, h]| [w as f32, h as f32]);
+    #[cfg(target_os = "macos")]
+    let (default_size, min_size) = ([1180.0 * z, 720.0 * z], [900.0 * z, 560.0 * z]);
+    #[cfg(not(target_os = "macos"))]
+    let (default_size, min_size) = ([930.0 * z, 470.0 * z], [600.0 * z, 300.0 * z]);
+    let size = saved.map_or(default_size, |[_, _, w, h]| [w as f32, h as f32]);
     let mut viewport = quiet(
         egui::ViewportBuilder::default()
             .with_title(MAIN_TITLE)
             .with_inner_size(size)
-            .with_min_inner_size([600.0 * z, 300.0 * z])
+            .with_min_inner_size(min_size)
             .with_maximized(loaded.settings.window_maximized && !offscreen())
             .with_icon(app_icon()),
     );
@@ -390,12 +395,18 @@ fn app() -> eframe::Result {
         renderer::overridden(&args).as_deref(),
         renderer::failed_before().is_some(),
     );
-    let options = || eframe::NativeOptions {
-        viewport: viewport.clone(),
-        // Linux: X11 (XWayland) over Wayland when both are there, so menus open where clicked.
-        #[cfg(target_os = "linux")]
-        event_loop_builder: unix::event_loop_hook(),
-        ..Default::default()
+    let options = || {
+        #[allow(unused_mut)]
+        let mut options = eframe::NativeOptions {
+            viewport: viewport.clone(),
+            // Linux: X11 (XWayland) over Wayland when both are there, so menus open where clicked.
+            #[cfg(target_os = "linux")]
+            event_loop_builder: unix::event_loop_hook(),
+            ..Default::default()
+        };
+        #[cfg(debug_assertions)]
+        uitest::install(&mut options);
+        options
     };
     let result = renderer::run("misterdownloadmanager", &plan, options, move |cc| {
         #[cfg(windows)]

@@ -193,7 +193,9 @@ impl Progress {
     pub fn new(id: u64, show_complete: bool) -> Self {
         Progress {
             id,
-            details: true,
+            // macOS opens compact (a native download window is a card, not a table); the
+            // connections stay one click away.
+            details: !crate::winui::mac_look(),
             tab: Tab::Status,
             ttab: TTab::Files,
             limiter: false,
@@ -232,10 +234,11 @@ impl Progress {
             (frac * 100.0).floor() as u32,
             crate::i18n::isolate(&item.file_name)
         );
+        let mac = winui::mac_look();
         let body = if self.details {
-            [548.0, 412.0 + torrent_drop(item)]
+            [548.0, if mac { 452.0 } else { 412.0 } + torrent_drop(item)]
         } else {
-            [548.0, 241.0]
+            [548.0, if mac { 286.0 } else { 241.0 }]
         };
         // Windows: the title bar is ours (#63), drawn in the client above IDM's layout, so the
         // hide button sits in it, left of Minimize, as in IDM. Elsewhere the system draws it.
@@ -396,8 +399,15 @@ impl Progress {
         frac: f64,
     ) -> Action {
         let p = ui.painter().clone();
-        let hide = self.tabs(ui, o);
+        let mac = winui::mac_look();
+        let hide = if mac {
+            self.segmented(ui, o);
+            false
+        } else {
+            self.tabs(ui, o)
+        };
         match self.tab {
+            Tab::Status if mac => status_page_mac(ui, o, item, snap, frac),
             Tab::Status => status_page(ui, o, item, snap, frac),
             Tab::Limiter => {
                 if self.limiter_page(ui, o, item) {
@@ -412,7 +422,16 @@ impl Progress {
         }
 
         // The progress bar: IDM's green on the shared, themed track.
-        winui::meter(&p, r(o, 17.0, 180.0, 513.0, 16.0), frac as f32);
+        winui::meter(
+            &p,
+            if mac {
+                r(o, 20.0, 190.0, 508.0, 8.0)
+            } else {
+                r(o, 17.0, 180.0, 513.0, 16.0)
+            },
+            frac as f32,
+        );
+        let (button_y, button_h) = if mac { (206.0, 26.0) } else { (206.0, 22.0) };
 
         let mut action = if hide { Action::Hide } else { Action::None };
         let details_label = if self.details {
@@ -429,26 +448,33 @@ impl Progress {
         // The row as wide as its labels in this language need (#192), each laid out for the
         // longer of its two labels so it keeps its size when they change; Cancel stays at the
         // window's edge.
-        let [details_at, pause_at, cancel_at] = winui::button_row(
-            &p,
-            &[
-                (
-                    winui::widest_label(&p, &["<< Hide details", "Show details >>"]),
-                    30.0,
-                    138.0,
-                ),
-                (winui::widest_label(&p, &["Pause", "Resume"]), 311.0, 82.0),
-                ("Cancel", 422.0, 73.0),
-            ],
-            8.0,
-            30.0,
-            200.0,
-        )[..] else {
-            unreachable!("three buttons")
+        let geometry: [(f32, f32); 3] = if mac {
+            // Right-aligned, as a dialog's buttons are on macOS; Cancel at the edge.
+            [(210.0, 138.0), (356.0, 82.0), (446.0, 82.0)]
+        } else {
+            let [details, pause, cancel] = winui::button_row(
+                &p,
+                &[
+                    (
+                        winui::widest_label(&p, &["<< Hide details", "Show details >>"]),
+                        30.0,
+                        138.0,
+                    ),
+                    (winui::widest_label(&p, &["Pause", "Resume"]), 311.0, 82.0),
+                    ("Cancel", 422.0, 73.0),
+                ],
+                8.0,
+                30.0,
+                200.0,
+            )[..] else {
+                unreachable!("three buttons")
+            };
+            [details, pause, cancel]
         };
+        let [details_at, pause_at, cancel_at] = geometry;
         if winui::button(
             ui,
-            r(o, details_at.0, 206.0, details_at.1, 22.0),
+            r(o, details_at.0, button_y, details_at.1, button_h),
             details_label,
             kind,
             false,
@@ -471,7 +497,7 @@ impl Progress {
         };
         if winui::button(
             ui,
-            r(o, pause_at.0, 206.0, pause_at.1, 22.0),
+            r(o, pause_at.0, button_y, pause_at.1, button_h),
             label,
             pkind,
             false,
@@ -487,7 +513,7 @@ impl Progress {
         }
         if winui::button(
             ui,
-            r(o, cancel_at.0, 206.0, cancel_at.1, 22.0),
+            r(o, cancel_at.0, button_y, cancel_at.1, button_h),
             "Cancel",
             ButtonKind::Normal,
             false,
@@ -559,6 +585,74 @@ impl Progress {
                 crate::i18n::mark("Hide to the notification area"),
             )
             .clicked()
+    }
+
+    /// The three pages as a macOS segmented control (the tab strip's equivalent there).
+    fn segmented(&mut self, ui: &mut Ui, o: Pos2) {
+        let p = ui.painter().clone();
+        let labels = [
+            crate::i18n::mark("Download status"),
+            crate::i18n::mark("Speed Limiter"),
+            crate::i18n::mark("Options on completion"),
+        ];
+        let tabs = [Tab::Status, Tab::Limiter, Tab::Completion];
+        let mut widths = [0.0f32; 3];
+        for (w, label) in widths.iter_mut().zip(labels) {
+            *w = winui::text_width(&p, crate::i18n::t(label)).ceil() + 28.0;
+        }
+        let total: f32 = widths.iter().sum::<f32>() + 2.0;
+        let track = r(o, 20.0, 14.0, total, 26.0);
+        p.rect_filled(track, 6.0, winui::FIELD());
+        p.rect_stroke(
+            track,
+            6.0,
+            egui::Stroke::new(1.0, winui::FIELD_EDGE()),
+            egui::StrokeKind::Inside,
+        );
+        let mut x = track.left() + 1.0;
+        for ((w, label), tab) in widths.iter().zip(labels).zip(tabs) {
+            let rc = egui::Rect::from_min_size(
+                egui::pos2(x, track.top() + 1.0),
+                egui::vec2(*w, track.height() - 2.0),
+            );
+            let resp = ui.interact(
+                rc,
+                egui::Id::unique(("progress-seg", self.id, x as i32)),
+                winui::pointer_only(),
+            );
+            winui::expose(
+                &resp,
+                egui::Role::Button,
+                crate::i18n::t(label),
+                true,
+                Some(tab == self.tab),
+            );
+            let selected = tab == self.tab;
+            if selected {
+                p.rect_filled(rc, 5.0, winui::LIGHT_BG());
+                p.rect_stroke(
+                    rc,
+                    5.0,
+                    egui::Stroke::new(1.0, winui::FIELD_EDGE()),
+                    egui::StrokeKind::Inside,
+                );
+            }
+            p.text(
+                rc.center(),
+                egui::Align2::CENTER_CENTER,
+                crate::i18n::t(label),
+                winui::tahoma(),
+                if selected {
+                    winui::TEXT()
+                } else {
+                    winui::MUTED()
+                },
+            );
+            if resp.clicked() {
+                self.tab = tab;
+            }
+            x += *w;
+        }
     }
 
     /// The Speed Limiter tab, live for this download. Returns true when "Hide tab" is pressed.
@@ -1034,6 +1128,97 @@ fn status_page(ui: &Ui, o: Pos2, item: &Item, snap: Option<&Snapshot>, frac: f64
 
 /// How much lower a torrent's details sit than a download's (and how much taller its window
 /// is): its tab strip, where the connections caption is, would touch the buttons above.
+/// The status page in macOS form: a small name block, then two columns of label/value pairs,
+/// instead of IDM's single long column of absolute coordinates.
+fn status_page_mac(ui: &Ui, o: Pos2, item: &Item, snap: Option<&Snapshot>, frac: f64) {
+    let p = &ui.painter().clone();
+    let left = o.x + 20.0;
+    let mid = o.x + 300.0;
+    let end = o.x + 528.0;
+    let status = match item.status {
+        Status::Downloading if item.at_service().is_some() => item.at_service().unwrap_or_default(),
+        Status::Downloading => {
+            let receiving = snap.is_some_and(|s| {
+                s.connections
+                    .iter()
+                    .any(|c| matches!(c.status, ConnStatus::Receiving))
+            }) || ((item.video.is_some() || item.torrent.is_some())
+                && item.rate() > 0.0);
+            if receiving {
+                crate::i18n::t("Receiving data...")
+            } else {
+                crate::i18n::t("Connecting...")
+            }
+            .to_owned()
+        }
+        Status::Complete => crate::i18n::t("Complete").to_owned(),
+        Status::Stopped => crate::i18n::t("Paused").to_owned(),
+        Status::Queued => crate::i18n::t("Waiting").to_owned(),
+        Status::Error => crate::i18n::fmt(
+            crate::i18n::t("Error: {error}"),
+            &[(
+                "error",
+                item.error.as_deref().unwrap_or(crate::i18n::t("unknown")),
+            )],
+        ),
+    };
+    let url = crate::i18n::ltr(item.url.as_str());
+    let (rect, cut) = winui::text_fit(p, left, o.y + 56.0, &url, winui::MUTED(), end);
+    winui::copyable(ui, rect, "url", &url, cut);
+    winui::text(p, left, o.y + 78.0, &status, winui::TEXT());
+    let pair = |label: &str, value: &str, x: f32, baseline: f32, right: f32| {
+        let label = crate::i18n::t(label);
+        winui::text(p, x, baseline, label, winui::MUTED());
+        let vx = x + winui::text_width(p, label).ceil() + 8.0;
+        if vx + 20.0 < right {
+            winui::text_fit(p, vx, baseline, value, winui::TEXT(), right);
+        }
+    };
+    let size = item.size.map_or(String::new(), size3);
+    let downloaded = if crate::i18n::code() == "en" {
+        format!("{} ( {:.2} % )", size3(item.downloaded), frac * 100.0)
+    } else {
+        format!(
+            "{} ( {} )",
+            size3(item.downloaded),
+            crate::i18n::percent(frac, 2)
+        )
+    };
+    let rate = if item.status == Status::Downloading {
+        model::rate(item.rate())
+    } else {
+        String::new()
+    };
+    let resume = match item.resumable {
+        Some(true) => crate::i18n::t("Yes"),
+        Some(false) => crate::i18n::t("No"),
+        None => "",
+    }
+    .to_owned();
+    pair("Downloaded", &downloaded, left, o.y + 108.0, mid - 16.0);
+    pair("File size", &size, mid, o.y + 108.0, end);
+    pair("Transfer rate", &rate, left, o.y + 130.0, mid - 16.0);
+    pair("Time left", &item.time_left(), mid, o.y + 130.0, end);
+    pair("Resume capability", &resume, left, o.y + 152.0, mid - 16.0);
+    if item.torrent.is_none() && item.video.is_none() && item.gallery.is_none() {
+        let label = crate::i18n::t("Server");
+        winui::text(p, mid, o.y + 152.0, label, winui::MUTED());
+        let vx = mid + winui::text_width(p, label).ceil() + 8.0;
+        let seen = snap
+            .and_then(|s| s.server.as_ref())
+            .map(crate::whereis::Seen::from)
+            .or_else(|| item.server.clone());
+        crate::whereis::line(
+            ui,
+            vx,
+            o.y + 152.0,
+            end,
+            seen.as_ref(),
+            &format!("progress-{}", item.id),
+        );
+    }
+}
+
 fn torrent_drop(item: &Item) -> f32 {
     if item.torrent.is_some() { 6.0 } else { 0.0 }
 }

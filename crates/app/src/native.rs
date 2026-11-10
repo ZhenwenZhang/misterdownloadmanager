@@ -137,6 +137,8 @@ pub fn theme(sys: &System) -> Theme {
     let mut t = CLASSIC.clone();
     t.id = "native".into();
     t.name = "Native".into();
+    #[cfg(target_os = "macos")]
+    macos_style(&mut t);
     // Secondary text at 4.5:1 at least (the classic dark notes are 4.42:1).
     for p in [&mut t.light, &mut t.dark] {
         p.muted = crate::derive::readable(p.muted, p.window, 4.5);
@@ -148,6 +150,68 @@ pub fn theme(sys: &System) -> Theme {
         with_accent(&mut t.dark, a.light[1], true);
     }
     t
+}
+
+/// Modern macOS proportions and control language. The native accent is applied afterwards.
+#[cfg(target_os = "macos")]
+fn macos_style(t: &mut Theme) {
+    use crate::palette::{
+        ButtonLook, CaptionLook, CheckLook, FieldFocus, FocusLook, IconStyle, ProgressLook,
+        ScrollLook,
+    };
+
+    let rgb = Color32::from_rgb;
+    t.light = crate::derive::derive(&crate::derive::Seeds {
+        background: rgb(0xf5, 0xf5, 0xf7),
+        surface: Color32::WHITE,
+        header: rgb(0xf7, 0xf7, 0xf8),
+        text: rgb(0x1d, 0x1d, 0x1f),
+        accent: rgb(0x00, 0x7a, 0xff),
+        selection: Some(rgb(0x00, 0x7a, 0xff)),
+        error: rgb(0xff, 0x3b, 0x30),
+        warning: rgb(0xff, 0x95, 0x00),
+        success: rgb(0x34, 0xc7, 0x59),
+    });
+    t.dark = crate::derive::derive(&crate::derive::Seeds {
+        background: rgb(0x1c, 0x1c, 0x1e),
+        surface: rgb(0x2c, 0x2c, 0x2e),
+        header: rgb(0x24, 0x24, 0x26),
+        text: rgb(0xf5, 0xf5, 0xf7),
+        accent: rgb(0x0a, 0x84, 0xff),
+        selection: Some(rgb(0x00, 0x56, 0xb3)),
+        error: rgb(0xff, 0x45, 0x3a),
+        warning: rgb(0xff, 0x9f, 0x0a),
+        success: rgb(0x30, 0xd1, 0x58),
+    });
+
+    t.metrics.control_radius = 6.0;
+    t.metrics.button_radius = 6.0;
+    t.metrics.part_radius = 5.0;
+    t.metrics.check_radius = 4.0;
+    t.metrics.flyout_radius = 10.0;
+    t.metrics.menu_item_radius = 6.0;
+    t.metrics.widget_radius = 6.0;
+    t.metrics.popup_radius = 8.0;
+    t.metrics.font_dialog = 13.0;
+    t.metrics.font_dialog_bold = 13.0;
+    t.metrics.font_ui = 13.0;
+    t.metrics.font_ui_bold = 13.0;
+    t.metrics.font_body = 13.0;
+    t.metrics.list_row = 22.0;
+    t.metrics.list_header = 26.0;
+    t.metrics.toolbar_height = 52.0;
+    t.metrics.toolbar_button_width = 58.0;
+    t.metrics.toolbar_icon = 24.0;
+
+    t.icons = IconStyle::Mono;
+    t.icon_set = None;
+    t.controls.field_focus = FieldFocus::Ring;
+    t.controls.check = CheckLook::Mac;
+    t.controls.progress = ProgressLook::Bar;
+    t.controls.scroll = ScrollLook::Overlay;
+    t.controls.caption = CaptionLook::System;
+    t.controls.focus = FocusLook::Ring;
+    t.controls.button = ButtonLook::Mac;
 }
 
 /// The accent's roles in `p` from `accent`, with the hover, pressed and tint shades the classic
@@ -187,6 +251,9 @@ fn with_accent(p: &mut Palette, accent: Color32, dark: bool) {
     };
     let text = ink_on(accent);
     p.accent = accent;
+    // Keep the keyboard ring visually on the accent without making it the exact same role:
+    // high-contrast themes use equality here as their marker.
+    p.focus_ring = mix(accent, p.window, 0.03);
     p.selection = if dark {
         mix(accent, black, 0.45)
     } else {
@@ -279,5 +346,21 @@ mod tests {
         ] {
             assert!(near(mine, classic), "{mine:?} vs {classic:?}");
         }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_native_theme_uses_modern_system_proportions() {
+        use crate::palette::{FieldFocus, FocusLook, IconStyle, ScrollLook};
+
+        let t = theme(&System::default());
+        assert_eq!(t.id, "native");
+        assert_eq!(t.icons, IconStyle::Mono);
+        assert_eq!(t.controls.field_focus, FieldFocus::Ring);
+        assert_eq!(t.controls.focus, FocusLook::Ring);
+        assert_eq!(t.controls.scroll, ScrollLook::Overlay);
+        assert_eq!(t.metrics.toolbar_height, 52.0);
+        assert_eq!(t.metrics.toolbar_icon, 24.0);
+        assert_eq!(t.metrics.list_row, 22.0);
     }
 }

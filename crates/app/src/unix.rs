@@ -2288,8 +2288,11 @@ mod host_copy_tests {
         std::fs::copy("/bin/sleep", &old).unwrap();
         let mut running = std::process::Command::new(&old).arg("30").spawn().unwrap();
         std::thread::sleep(std::time::Duration::from_millis(200));
+        // Linux refuses to write over a running program ("Text file busy"); macOS allows it,
+        // and truncating the image of a running program can kill it, so the premise is Linux's.
+        #[cfg(not(target_os = "macos"))]
         assert!(
-            std::fs::write(&old, b"x").is_err() || cfg!(target_os = "macos"),
+            std::fs::write(&old, b"x").is_err(),
             "Linux refuses to write over a running program"
         );
         let from = program(t.path(), "new-host", "echo two");

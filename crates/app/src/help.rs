@@ -19,6 +19,9 @@ pub const SPONSORS: &str = "https://github.com/sponsors/anefzaoui";
 const LATEST: &str = "https://api.github.com/repos/anefzaoui/misterdownloadmanager/releases/latest";
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const COMMIT: &str = env!("MDM_COMMIT");
+/// The day this is built, shown as the version (the window title too): builds are told apart
+/// by their date. VERSION stays Cargo's, which update checks compare with the releases.
+pub const BUILD_DATE: &str = env!("MDM_BUILD_DATE");
 /// While MDM runs, the automatic check comes again this often (it also checks at every start).
 pub const CHECK_EVERY: i64 = 24 * 3600;
 /// The check at start waits this long (the window, the list and the downloads first).
@@ -734,7 +737,7 @@ impl About {
                 );
                 let version = crate::i18n::fmt(
                     crate::i18n::t("Version {version} ({commit})"),
-                    &[("version", VERSION), ("commit", COMMIT)],
+                    &[("version", BUILD_DATE), ("commit", COMMIT)],
                 );
                 // Copyable: bug reports ask for it.
                 let rect = winui::text(&p, o.x + 80.0, o.y + 46.0, &version, winui::MUTED());

@@ -1036,6 +1036,13 @@ pub fn rate(bps: f64) -> String {
     }
 }
 
+/// The macOS sidebar's speed figure: always MB/sec, whatever the rate, because a
+/// KB figure reads like a sliver next to the number there. Two decimals: enough to see a
+/// slow download move, without the third digit's flicker.
+pub fn rate_mb(bps: f64) -> String {
+    unit(bps / (1024.0 * 1024.0), 2, "{n} MB/sec")
+}
+
 /// The list's Size column: IDM puts two spaces before the unit (`200.00  MB`).
 pub fn size_list(b: u64) -> String {
     if english() {

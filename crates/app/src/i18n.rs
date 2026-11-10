@@ -66,6 +66,12 @@ pub fn lang() -> Lang {
     if let Some(l) = *CURRENT.read().unwrap() {
         return l;
     }
+    // Tests assert the English wording, so they must not follow the language of the machine
+    // that runs them (a Chinese macOS failed seven of them). A test that wants another
+    // language calls `set_lang` first, as the i18n tests do.
+    #[cfg(test)]
+    let l = i18n().from_code("en").expect("the English catalog");
+    #[cfg(not(test))]
     let l = i18n().system_lang();
     use_lang(l);
     l
