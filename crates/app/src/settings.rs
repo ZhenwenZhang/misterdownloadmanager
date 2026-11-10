@@ -140,6 +140,10 @@ pub struct Settings {
     /// notification area, as closing the main window does (#63). On by default (the
     /// maintainer's choice), for existing lists too. Only where a tray shows MDM's icon.
     pub minimize_to_tray: bool,
+    /// General: closing the main window keeps MDM running, hidden in the notification area (else
+    /// closing quits). On by default, for existing lists too, in every copy. Only where a tray
+    /// shows MDM's icon.
+    pub close_to_tray: bool,
     pub mv2_extensions: bool,
     pub advanced_integration: bool,
     /// General: "Capture downloads from the following browsers" (name, on).
@@ -381,6 +385,7 @@ impl Default for Settings {
             extension_never_ask: false,
             clipboard_autostart: true,
             minimize_to_tray: true,
+            close_to_tray: true,
             mv2_extensions: true,
             advanced_integration: true,
             browsers: BROWSERS.iter().map(|b| (b.to_string(), true)).collect(),
@@ -1321,6 +1326,19 @@ pub(crate) mod sealed {
             let plain = serde_json::json!({ "site_logins": [["a.test", "u", "pw"]] });
             let old: crate::settings::Settings = serde_json::from_value(plain).unwrap();
             assert_eq!(old.site_logins[0].2, "pw");
+        }
+
+        #[test]
+        fn the_close_button_keeps_mdm_running_unless_told_otherwise() {
+            let s: crate::settings::Settings =
+                serde_json::from_value(serde_json::json!({})).unwrap();
+            assert!(
+                s.close_to_tray,
+                "a list from before the option goes on hiding"
+            );
+            let s: crate::settings::Settings =
+                serde_json::from_value(serde_json::json!({ "close_to_tray": false })).unwrap();
+            assert!(!s.close_to_tray);
         }
     }
 }

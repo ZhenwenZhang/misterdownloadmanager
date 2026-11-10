@@ -125,12 +125,16 @@ pub fn keep_theme(
     let theme_key = key.with("theme");
     let shown_key = key.with("shown");
     let front_key = key.with("front");
-    if !open {
+    // Not drawn in the last pass, the window is gone and this is a new one, hidden until it is
+    // told otherwise, whatever the last one was told (#440).
+    if !open || window_was_gone(ctx, key.with("theme-pass")) {
         ctx.data_mut(|d| {
             d.remove::<bool>(theme_key);
             d.remove::<bool>(shown_key);
             d.remove::<u32>(front_key);
         });
+    }
+    if !open {
         return;
     }
     let sent = ctx.data(|d| d.get_temp::<bool>(theme_key));
@@ -183,6 +187,49 @@ pub fn keep_theme(
     crate::win32::caption_dark(title, dark);
     #[cfg(not(windows))]
     let _ = title;
+}
+
+/// Whether the window `key` is drawn again after a pass that didn't draw it: egui destroys a
+/// viewport a pass doesn't draw, so what was kept about its window went with it (a dialog that
+/// ended without a closing pass, as Download File Info behind the Create folder question, #440).
+/// False while it is drawn pass after pass, whatever the time between them (a minimized main
+/// window runs its passes seconds apart). `key` is this caller's alone.
+fn window_was_gone(ctx: &egui::Context, key: egui::Id) -> bool {
+    let pass = ctx.cumulative_pass_nr();
+    let last = ctx.data(|d| d.get_temp::<u64>(key));
+    ctx.data_mut(|d| d.insert_temp(key, pass));
+    last.is_none_or(|l| pass.saturating_sub(l) > 1)
+}
+
+/// The dialogs later downloads wait behind (`Download File Info`, the duplicate question): they
+/// must be on the screen, even while the main window is minimized (Windows hides a window's owned
+/// windows with it, leaving the downloads waiting behind one nobody can see, #440).
+#[cfg(windows)]
+const QUEUE_GATES: [&str; 2] = ["file-info", "duplicate"];
+
+/// A window that must be on the screen and isn't (hidden, not minimized): shown again after a
+/// moment, however it got that way, directly: winit believes it is still visible and ignores
+/// `Visible(true)`. The other platforms have nothing to ask: MDM's windows have no owner there,
+/// and the window manager doesn't say whether it shows a window.
+#[cfg(windows)]
+fn keep_on_screen(ctx: &egui::Context, key: egui::Id, title: &str) {
+    const AFTER_SECONDS: f64 = 1.5;
+    let since_key = key.with("hidden-since");
+    let shown = ctx.data(|d| d.get_temp::<bool>(key.with("shown")).unwrap_or(false));
+    if !shown || !crate::win32::window_hidden(title) {
+        ctx.data_mut(|d| d.remove::<f64>(since_key));
+        return;
+    }
+    let now = ctx.input(|i| i.time);
+    let since = ctx.data(|d| d.get_temp::<f64>(since_key));
+    if since.is_some_and(|s| now - s >= AFTER_SECONDS) {
+        tracing::warn!("window {title:?} was hidden: shown again");
+        crate::win32::show_hidden(title);
+        ctx.data_mut(|d| d.remove::<f64>(since_key));
+    } else if since.is_none() {
+        ctx.data_mut(|d| d.insert_temp(since_key, now));
+    }
+    ctx.request_repaint_after(std::time::Duration::from_millis(500));
 }
 
 /// A fixed-size dialog window whose client area is exactly `client` pixels; `body` gets the
@@ -303,6 +350,10 @@ fn dialog_window<T>(
     // As large as the screen allows at the interface size (#262): the rest scrolls.
     let shown = shown_size(ctx, outer);
     let vid = ViewportId::from_hash_of(id);
+    // A new window: nothing kept about the last one applies to it (#440).
+    if window_was_gone(ctx, key.with("window-pass")) {
+        forget_window(ctx, vid, key);
+    }
     // Hidden until `keep_theme` has given it its theme (see there).
     let mut builder = ViewportBuilder::default()
         .with_visible(false)
@@ -419,22 +470,31 @@ fn dialog_window<T>(
             ctx.data_mut(|d| d.insert_temp(focused, true));
         }
     }
+    #[cfg(windows)]
+    if matches!(out, Outcome::Open) && QUEUE_GATES.contains(&id) {
+        keep_on_screen(ctx, key, title);
+    }
     if !matches!(out, Outcome::Open) {
-        // The next opening of this window is a new one (its text boxes start afresh).
-        let opened = opening_key_of(ViewportId::from_hash_of(id));
-        ctx.data_mut(|d| {
-            let n = d.get_temp::<u64>(opened).unwrap_or(0);
-            d.insert_temp(opened, n + 1);
-        });
-        ctx.data_mut(|d| d.remove::<bool>(focused));
-        forget_place(ctx, key);
-        #[cfg(windows)]
-        ctx.data_mut(|d| {
-            d.remove::<[f32; 2]>(key.with("framed"));
-            d.remove::<isize>(key.with("hwnd"));
-        });
+        forget_window(ctx, vid, key);
     }
     out
+}
+
+/// What a dialog's window keeps while it is open, forgotten: the next opening is a new one (its
+/// text boxes start afresh).
+fn forget_window(ctx: &egui::Context, vid: ViewportId, key: egui::Id) {
+    let opened = opening_key_of(vid);
+    ctx.data_mut(|d| {
+        let n = d.get_temp::<u64>(opened).unwrap_or(0);
+        d.insert_temp(opened, n + 1);
+        d.remove::<bool>(key.with("focus-sent"));
+    });
+    forget_place(ctx, key);
+    #[cfg(windows)]
+    ctx.data_mut(|d| {
+        d.remove::<[f32; 2]>(key.with("framed"));
+        d.remove::<isize>(key.with("hwnd"));
+    });
 }
 
 /// Whether the windows' title bars are ours: a style theme's on Windows (#45). Elsewhere the
@@ -3114,6 +3174,68 @@ pub fn ensure_folder<T>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #440: Download File Info behind the Create folder question ended without a closing pass,
+    /// and the next one opened as a new, hidden window that was never told to show: later
+    /// downloads waited behind it for good.
+    #[test]
+    fn a_dialog_gone_without_a_closing_pass_shows_when_it_opens_again() {
+        egui::Context::set_immediate_viewport_renderer(move |ctx, viewport| {
+            let input = egui::RawInput {
+                viewport_id: viewport.ids.this,
+                viewports: std::iter::once((viewport.ids.this, egui::ViewportInfo::default()))
+                    .collect(),
+                screen_rect: Some(egui::Rect::from_min_size(Pos2::ZERO, vec2(300.0, 200.0))),
+                ..Default::default()
+            };
+            let mut ui_cb = viewport.viewport_ui_cb;
+            let mut out = ctx.run_ui(input, |ui| ui_cb(ui));
+            out.textures_delta.clear();
+        });
+        // A test-only title, kept out of the catalog (extract.py reads literal titles).
+        let title = String::from("test window 440");
+        let title = title.as_str();
+        let id = "test-440";
+        let ctx = egui::Context::default();
+        ctx.set_embed_viewports(false);
+        // A pass of the main window with the dialog (or not); whether it was told to show.
+        let pass = |open: bool| {
+            let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+                if open {
+                    let _ = window(
+                        ui.ctx(),
+                        id,
+                        title,
+                        [300.0, 200.0],
+                        false,
+                        egui::Color32::LIGHT_GRAY,
+                        |_, _| Outcome::<()>::Open,
+                    );
+                }
+            });
+            out.textures_delta.clear();
+            out.viewport_output
+                .get(&ViewportId::from_hash_of(id))
+                .is_some_and(|o| {
+                    o.commands
+                        .iter()
+                        .any(|c| matches!(c, egui::ViewportCommand::Visible(true)))
+                })
+        };
+        assert!(
+            !pass(true),
+            "the first frame only gives the window its theme"
+        );
+        assert!(pass(true), "the second frame shows it");
+        assert!(!pass(true));
+        // The dialog ended while its window was open (no pass with the Outcome that closes it),
+        // and a pass without it: egui destroys that window.
+        assert!(!pass(false));
+        // Opened again: a new window.
+        assert!(!pass(true), "again, first its theme");
+        assert!(pass(true), "and then it is shown");
+        assert!(!pass(true));
+    }
 
     /// Add URL opens and its address box takes the focus, frame after frame, without the app
     /// hanging (0.2.2 froze here: an editable drop-down asked egui's context inside its lock).

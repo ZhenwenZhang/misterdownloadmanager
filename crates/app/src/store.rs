@@ -134,6 +134,8 @@ fn load_from(p: &Path, empty: Loaded) -> Loaded {
                 if i.status != Status::Complete
                     && i.video.is_none()
                     && let Ok(st) = ResumeState::load(&state_path(&i.dest))
+                    // A state under this name for another address is another row's (#442).
+                    && st.url == i.url
                 {
                     i.downloaded = st.downloaded();
                     i.size = Some(st.size);
@@ -544,6 +546,35 @@ mod tests {
         let edited = format!("{old} NZB");
         std::fs::write(&p, list(&edited)).unwrap();
         assert_eq!(load_from(&p, empty()).settings.auto_types, edited);
+    }
+
+    /// #442: two rows of one name, a resume state on the disk: only the row of its address
+    /// takes the progress (the other would take the data for its own and resume it).
+    #[test]
+    fn a_resume_state_is_read_by_the_row_it_belongs_to() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("downloads.json");
+        let dest = dir.path().join("master.mp4");
+        let url = "http://files.test/a/master.mp4";
+        let row = |id: u64, url: &str| {
+            serde_json::json!({
+                "id": id, "url": url, "file_name": "master.mp4", "dest": dest, "size": 100,
+                "downloaded": 0, "status": "Queued", "category": "Video", "description": "",
+                "last_try": null, "error": null, "resumable": null,
+            })
+        };
+        let list = serde_json::json!({
+            "next_id": 3, "version": 2,
+            "items": [row(1, url), row(2, "http://files.test/b/master.mp4")],
+        });
+        std::fs::write(&p, list.to_string()).unwrap();
+        let (a, b): (url::Url, url::Url) = (url.parse().unwrap(), url.parse().unwrap());
+        ResumeState::new(a, b, dest.clone(), 777, Default::default())
+            .write(&state_path(&dest))
+            .unwrap();
+        let loaded = load_from(&p, empty());
+        assert_eq!(loaded.items[0].size, Some(777));
+        assert_eq!(loaded.items[1].size, Some(100));
     }
 
     #[test]

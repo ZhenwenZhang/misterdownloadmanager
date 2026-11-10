@@ -770,6 +770,79 @@ fn on_disk(range: Option<&str>, saved: &mdm_engine::state::ResumeState) -> u64 {
     (to - from) - to_fetch
 }
 
+/// Watch `dl` to its end: the file its view last named, and the path it reports. The view is what
+/// the app's row follows.
+async fn view_and_outcome(dl: Download) -> (Option<std::path::PathBuf>, std::path::PathBuf) {
+    let until = std::time::Instant::now() + SETTLE;
+    let file = loop {
+        let v = dl.snapshot();
+        if v.state == mdm_engine::download::State::Done {
+            break v.file;
+        }
+        assert!(
+            !matches!(
+                v.state,
+                mdm_engine::download::State::Failed | mdm_engine::download::State::Cancelled
+            ),
+            "{:?}",
+            v.error
+        );
+        assert!(std::time::Instant::now() < until, "no end: {:?}", v.state);
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    };
+    (file, dl.wait().await.unwrap().path)
+}
+
+/// #442: a file took the destination while the download ran, so it was saved under the next
+/// number. The view says that name (the row used to keep the old one and open the other file).
+#[tokio::test]
+async fn the_view_names_the_file_when_its_place_was_taken_meanwhile() {
+    // Several connections, and one connection on a server that refuses ranges.
+    for query in ["seed=11&rate=4M", "seed=12&rate=4M&no_range=true"] {
+        let s = server("").await;
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("master.mp4");
+        let dl = Download::start(
+            Request {
+                url: s
+                    .url(&format!("/gen/2M/master.mp4?{query}"))
+                    .parse()
+                    .unwrap(),
+                headers: Default::default(),
+                dest: Destination::File(dest.clone()),
+            },
+            fast_opts(),
+        );
+        // Another program's file, once the download is under way.
+        while dl.snapshot().file.is_none() {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        std::fs::write(&dest, b"someone else's").unwrap();
+        let (file, path) = view_and_outcome(dl).await;
+        assert_eq!(path, dir.path().join("master (1).mp4"), "{query}");
+        assert_eq!(file.as_deref(), Some(path.as_path()), "{query}");
+        assert_eq!(std::fs::read(&dest).unwrap(), b"someone else's");
+    }
+}
+
+/// The same for a resumed download: the row follows, and the resume itself still works.
+#[tokio::test]
+async fn the_view_names_the_file_when_a_resume_finds_its_place_taken() {
+    let s = server("rate=1M").await;
+    let (dir, state) = paused(&s, "/gen/8M/master.mp4?seed=13").await;
+    let dest = mdm_engine::state::ResumeState::load(&state).unwrap().dest;
+    std::fs::write(&dest, b"someone else's").unwrap();
+    s.set_faults(Faults::default());
+    let dl = Download::resume(state.clone(), Default::default(), fast_opts()).unwrap();
+    let (file, path) = view_and_outcome(dl).await;
+    assert_eq!(path.parent(), Some(dir.path()));
+    assert_ne!(path, dest);
+    assert_eq!(file.as_deref(), Some(path.as_path()));
+    assert_eq!(std::fs::metadata(&path).unwrap().len(), 8 << 20);
+    assert!(!state.exists(), "state file removed on completion");
+    assert_eq!(std::fs::read(&dest).unwrap(), b"someone else's");
+}
+
 #[tokio::test]
 async fn pause_and_resume_continues_where_it_stopped() {
     let s = server("rate=1M").await;

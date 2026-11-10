@@ -36,6 +36,7 @@ pub struct Properties {
     /// The debrid accounts (#44): "Through …" shows while one takes the address.
     route: crate::debrid::Route,
     direct: bool,
+    files_requested: bool,
 }
 
 impl Properties {
@@ -52,7 +53,12 @@ impl Properties {
             error: None,
             route,
             direct: item.direct,
+            files_requested: false,
         }
+    }
+
+    pub fn take_files_requested(&mut self) -> bool {
+        std::mem::take(&mut self.files_requested)
     }
 
     /// `item` is read every frame, so status and size stay live.
@@ -418,6 +424,19 @@ impl Properties {
             385.0,
             120.0,
         )[0];
+        if item.torrent.is_some()
+            && winui::button_light(
+                ui,
+                r(o, 170.0, 390.0, 78.0, 21.0),
+                // i18n: File Properties button that opens the selected torrent's file list
+                "Files...",
+                ButtonKind::Normal,
+                false,
+            )
+            .clicked()
+        {
+            self.files_requested = true;
+        }
         self.ending(
             ui,
             item,
@@ -754,6 +773,22 @@ impl Properties {
         let open_w = (winui::text_width(&p, crate::i18n::t("Open")) + 24.0)
             .ceil()
             .max(73.0);
+        if item.torrent.is_some() {
+            let files_w = (winui::text_width(&p, crate::i18n::t("Files...")) + 24.0)
+                .ceil()
+                .max(73.0);
+            if winui::button_light(
+                ui,
+                r(o, 16.0 + open_w + 8.0, 462.0, files_w, 26.0),
+                "Files...",
+                ButtonKind::Normal,
+                false,
+            )
+            .clicked()
+            {
+                self.files_requested = true;
+            }
+        }
         self.ending(
             ui,
             item,

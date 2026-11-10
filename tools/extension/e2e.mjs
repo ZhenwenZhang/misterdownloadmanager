@@ -1428,9 +1428,14 @@ const CASES = {
     await clickLink(t, `/gen/1M/get?cdstar=${encodeURIComponent(star)}`);
     await arrived(star, 1 << 20);
     await keptNothing(t.dl);
+    // #447: raw UTF-8 in filename=, no filename* (Firefox gives extensions its bytes).
+    const raw = `تقرير-e2e-${t.name}.zip`;
+    await clickLink(t, `/gen/1M/raw.php?cd=${encodeURIComponent(raw)}`);
+    await arrived(raw, 1 << 20);
+    await keptNothing(t.dl);
     const wrong = fs.readdirSync(path.join(downloads, "Compressed")).filter((f) => /^(download\.php|get|fallback-name\.zip)/.test(f));
     if (wrong.length) throw new Error(`saved under the address's or the fallback name too: ${wrong.join(", ")}`);
-    return `${plain}, ${star}`;
+    return `${plain}, ${star}, ${raw}`;
   },
 
   // A redirect: MDM keeps the address clicked (it asks it again to renew the link).

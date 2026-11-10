@@ -917,15 +917,19 @@ async function mediaList(tabId) {
   return out;
 }
 
-// A file's name from the tab's title when its address ends in a long hash (#345), else none: the
+// A file's name from the tab's title when its address ends in a long hash (#345); else, with the
+// popup's switch on (`includeOriginal`), the title before the address's own name; else none: the
 // app names it from the address, as for any download.
-function titledName(url, title) {
+function titledName(url, title, includeOriginal = false) {
   const last = pathOf(url).split("/").pop() || "";
   const dot = last.lastIndexOf(".");
   const stem = dot > 0 ? last.slice(0, dot) : last;
   const name = String(title || "").replace(/[\\/:*?"<>|]/g, " ").trim().slice(0, 150);
   const hash = stem.length >= 24 && /^[A-Za-z0-9=_-]+$/.test(stem) && (stem.match(/[-_]/g) || []).length <= 2;
-  return hash && name ? `${name}${dot > 0 ? last.slice(dot) : ""}` : "";
+  if (hash && name) return `${name}${dot > 0 ? last.slice(dot) : ""}`;
+  if (!includeOriginal || !name) return "";
+  const original = addressName(url).replace(/[\\/:*?"<>|\x00-\x1f]/g, " ").trim();
+  return original && original !== "." && original !== ".." ? `${name} - ${original}` : "";
 }
 
 // One of the tab's media, handed to the app as the popup asked: a stream to the Download video
@@ -960,7 +964,8 @@ async function mediaDownload(tabId, url) {
       ...(ctx.incognito ? { private: true } : {}),
     });
   }
-  return handOff({ url: it.url, referrer: page, size: it.size, mime: it.mime, explicit: true, filename: titledName(it.url, tab.title), ...ctx });
+  const { mediaTitleName } = await ext.storage.local.get({ mediaTitleName: false });
+  return handOff({ url: it.url, referrer: page, size: it.size, mime: it.mime, explicit: true, filename: titledName(it.url, tab.title, mediaTitleName), ...ctx });
 }
 
 // ---- the hand-off ------------------------------------------------------------------------
@@ -1570,7 +1575,32 @@ function dispositionName(cd) {
   }
   const plain = /(?:^|;)\s*filename\s*=\s*("((?:[^"\\]|\\.)*)"|[^;]+)/i.exec(cd);
   if (!plain) return "";
-  return (plain[2] !== undefined ? plain[2].replace(/\\(.)/g, "$1") : plain[1]).trim();
+  return decodedPlain((plain[2] !== undefined ? plain[2].replace(/\\(.)/g, "$1") : plain[1]).trim());
+}
+
+// A plain `filename` as sent, or its percent-encoded UTF-8 decoded when that is what it holds
+// (non-ASCII once decoded: `100%25.txt` stays as it is), as the app reads it (naming.rs).
+function decodedPlain(name) {
+  if (!name.includes("%")) return name;
+  try {
+    const decoded = decodeURIComponent(name);
+    return /[^\x00-\x7f]/.test(decoded) ? decoded : name;
+  } catch {
+    return name; // not percent-encoded UTF-8
+  }
+}
+
+// A response header's value as text. Firefox gives its bytes one character each (ISO-8859-1), so
+// a name sent as raw UTF-8 (`filename="تقرير.pdf"`) arrived as `ØªÙ…` (#447). It is read as UTF-8
+// when those bytes are valid UTF-8, as Firefox reads the name for its own downloads and the app
+// for its own requests; bytes that aren't (ISO-8859-1's `café`) stay as they came.
+function headerText(value) {
+  if (!/[\x80-\xff]/.test(value) || /[^\x00-\xff]/.test(value)) return value;
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(Uint8Array.from(value, (c) => c.charCodeAt(0)));
+  } catch {
+    return value;
+  }
 }
 
 // {name, size, mime, opened} when this answer to a page load becomes a download (or is one of
@@ -1588,7 +1618,7 @@ function answerFile(d) {
   // No type: the browser guesses from the bytes (a page, mostly); a download it becomes is
   // still seen by onCreated.
   if (!attachment && !opened && (!mime || SHOWN.test(mime))) return null;
-  let name = dispositionName(cd);
+  let name = dispositionName(headerText(cd));
   if (!name) {
     try {
       name = decodeURIComponent(pathOf(d.url).split("/").pop() || "");

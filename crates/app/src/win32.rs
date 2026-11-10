@@ -205,6 +205,27 @@ pub fn come_forward(title: &str) -> Option<bool> {
     Some(lift)
 }
 
+/// Whether our window titled `title` exists and is not on the screen: hidden and not minimized
+/// (a window whose owner is minimized counts: Windows hides it with its owner).
+pub fn window_hidden(title: &str) -> bool {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{IsIconic, IsWindowVisible};
+    // SAFETY: plain queries about our own window.
+    find_own_window(title).is_some_and(|h| unsafe { IsWindowVisible(h) == 0 && IsIconic(h) == 0 })
+}
+
+/// Our window titled `title` shown (it was hidden behind winit's back), not activated, and above
+/// the other programs' windows ([`come_forward`]) unless off-screen.
+pub fn show_hidden(title: &str) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SW_SHOWNOACTIVATE, ShowWindow};
+    if let Some(h) = find_own_window(title) {
+        // SAFETY: our own window, on its thread.
+        unsafe { ShowWindow(h, SW_SHOWNOACTIVATE) };
+        if !crate::offscreen() {
+            come_forward(title);
+        }
+    }
+}
+
 /// Whether a window just shown goes above the others ([`come_forward`]): it isn't the foreground
 /// window, isn't minimized, and isn't topmost already (a question, a notice: lifting it would
 /// end its topmost).

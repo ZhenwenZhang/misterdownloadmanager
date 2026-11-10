@@ -58,6 +58,10 @@ pub struct Tray {
     download_ids: Arc<Mutex<Vec<(MenuId, u64)>>>,
     /// Every entry with its English text, to translate again when the language changes.
     labels: Vec<(Entry, &'static str)>,
+    /// What [`Tray::visible`] last saw and when: the minimize path asks every frame, and the
+    /// shell shouldn't be asked that often (a second of staleness is enough).
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    visible_checked: std::cell::Cell<Option<(bool, std::time::Instant)>>,
 }
 
 /// A menu entry whose text is translated.
@@ -68,6 +72,38 @@ enum Entry {
 }
 
 impl Tray {
+    /// Whether the shell is really showing the icon. `tray-icon` ignores a failed
+    /// `Shell_NotifyIcon(NIM_ADD)` (it waits for the taskbar to be recreated), so `Tray::new`
+    /// returning `Some` doesn't mean the user can see or click the icon. Asking for its rect is
+    /// the only way to know. Linux has no such query: its [`available`] stands for it.
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    pub fn visible(&self) -> bool {
+        // Off-screen tests can't make the shell answer reliably: the variable says what to
+        // answer (the startup tray test uses it with MDM_TEST_TRAY).
+        if let Some(v) = std::env::var_os("MDM_TEST_TRAY_VISIBLE") {
+            return v == "1";
+        }
+        if let Some((shown, checked)) = self.visible_checked.get()
+            && checked.elapsed() < std::time::Duration::from_secs(1)
+        {
+            return shown;
+        }
+        self.visible_now()
+    }
+
+    /// [`visible`] without the one-second cache: closing asks once and must not use an answer
+    /// from before the icon went away.
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    pub fn visible_now(&self) -> bool {
+        if let Some(v) = std::env::var_os("MDM_TEST_TRAY_VISIBLE") {
+            return v == "1";
+        }
+        let shown = self.tray.rect().is_some();
+        self.visible_checked
+            .set(Some((shown, std::time::Instant::now())));
+        shown
+    }
+
     /// The icon and its menu; events wake `ctx`. None if the shell refuses the icon.
     pub fn new(ctx: &egui::Context, rgba: Vec<u8>, size: u32, limiter: bool) -> Option<Tray> {
         let menu = Menu::new();
@@ -183,6 +219,8 @@ impl Tray {
             shown_downloads: Default::default(),
             download_ids,
             labels,
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
+            visible_checked: Default::default(),
         })
     }
 

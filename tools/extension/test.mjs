@@ -807,11 +807,17 @@ const MPD = (protect) => `<?xml version="1.0"?>
   const f = natives(calls).find((m) => m.url === "https://files.test/movie.mp4");
   assert.deepEqual([f.explicit, f.referrer, f.size, f.mime, f.video], [true, "https://watch.test/v/1", 52428800, "video/mp4", undefined]);
   assert.equal(f.filename, "", "a file with a name of its own is named by its address");
+  await api.storage.local.set({ mediaTitleName: true });
+  await popupAsk(listeners, { type: "media-download", tab: 9, url: "https://files.test/movie.mp4" });
+  assert.equal(natives(calls).filter((m) => m.url === "https://files.test/movie.mp4").at(-1).filename, "A film - movie.mp4");
   // #345: an address that ends in a long hash names nothing: the tab's title does.
   const hashed = "https://files.test/SFp1NUcrZFRkRUVrUWlqM3paMitkakJIUW9JSFhOeEZkd0ZMNEc5UHpnZm5hRkY4Vis5MjlJU00xdDVqTk1vaw.mp4";
   listeners.responseStarted({ tabId: 9, frameId: 0, type: "media", url: hashed, responseHeaders: [{ name: "Content-Type", value: "video/mp4" }, { name: "Content-Length", value: "52428800" }] });
   await settle();
   await popupAsk(listeners, { type: "media-download", tab: 9, url: hashed });
+  // A hash isn't worth keeping, with the switch on too: the title alone names it.
+  assert.equal(natives(calls).filter((m) => m.url === hashed).at(-1).filename, "A film.mp4");
+  await api.storage.local.set({ mediaTitleName: false });
   assert.equal(natives(calls).find((m) => m.url === hashed).filename, "A film.mp4");
   const before = natives(calls).length;
   assert.deepEqual(await popupAsk(listeners, { type: "media-download", tab: 9, url: "https://drm.test/p/manifest.mpd" }), { ok: false, why: "drm" });
@@ -1650,6 +1656,32 @@ const ask = (listeners) => (m, sender) => new Promise((r) => listeners.message(m
   assert.equal(natives(calls).length, 1);
   assert.deepEqual(steps(calls), []);
   ok("#208 Firefox: a download caught from its answer, before the browser's dialog");
+}
+// #447: Firefox hands a header's value over byte for byte, each byte one character. A name sent as
+// raw UTF-8 is read as UTF-8; bytes that aren't valid UTF-8 (ISO-8859-1) and a real percent sign stay.
+{
+  const asBytes = (text) => String.fromCharCode(...new TextEncoder().encode(text));
+  for (const [value, want] of [
+    [`attachment; filename="${asBytes("تقرير.pdf")}"`, "تقرير.pdf"],
+    [`attachment; filename="${asBytes("été à Paris.pdf")}"`, "été à Paris.pdf"],
+    [`attachment; filename="${asBytes("日本語.pdf")}"`, "日本語.pdf"],
+    ["attachment; filename=\"plain report.pdf\"", "plain report.pdf"],
+    // ISO-8859-1 bytes (é alone is not valid UTF-8).
+    ["attachment; filename=\"caf\u00e9.pdf\"", "café.pdf"],
+    // Percent-encoded UTF-8 in the plain name, as Firefox and the app read it.
+    ["attachment; filename=\"%D8%AA%D9%82%D8%B1%D9%8A%D8%B1.pdf\"", "تقرير.pdf"],
+    ["attachment; filename=\"100%25.pdf\"", "100%25.pdf"],
+    ["attachment; filename=\"50%.pdf\"", "50%.pdf"],
+    // RFC 8187 keeps winning, ASCII as it comes.
+    ["attachment; filename=\"fallback.pdf\"; filename*=UTF-8''%D8%AA%D9%82%D8%B1%D9%8A%D8%B1.pdf", "تقرير.pdf"],
+  ]) {
+    const { api, calls, listeners } = fakeApi({ firefox: true });
+    load(api, true);
+    await settle();
+    await held(listeners, answer("https://dl.test/get?id=2", { "Content-Type": "application/octet-stream", "Content-Disposition": value }));
+    assert.equal(natives(calls)[0].filename, want, value);
+  }
+  ok("#447 Firefox: a raw UTF-8 file name in a header reaches the app readable, other names as they were");
 }
 // A download taken from its answer (#208) is cancelled, so its response never starts: the proxy a
 // VPN add-on chose for it (proxy.onRequest, in the answer's proxyInfo) still goes with it.

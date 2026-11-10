@@ -55,6 +55,7 @@ mod theme;
 mod themefile;
 mod themeicons;
 mod torrentdlg;
+mod torrentfiles;
 mod torrents;
 mod transfer;
 mod tray;

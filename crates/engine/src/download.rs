@@ -1492,7 +1492,12 @@ async fn run(
     });
     let mut v = shared.view.lock().unwrap();
     v.state = match &result {
-        Ok(_) => State::Done,
+        Ok(o) => {
+            // Where it really is: `finish` numbers the name when another file took it meanwhile,
+            // and whoever reads the view (the app's row) goes by this.
+            v.file = Some(o.path.clone());
+            State::Done
+        }
         Err(Error::Cancelled) => State::Cancelled,
         Err(e) => {
             v.error = Some(e.to_string());

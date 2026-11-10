@@ -26,6 +26,8 @@ pub enum Event {
     },
     /// The window answers again after a freeze.
     Recovered,
+    /// The socket couldn't be opened: the app can never connect, so stop waiting for it.
+    ServeFailed(String),
     /// The app is gone: `clean` when it closed normally.
     Gone { clean: bool, notes: Notes },
 }

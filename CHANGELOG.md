@@ -5,9 +5,31 @@ Each release's notes on GitHub come from its section here (`## [X.Y.Z]`, see
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-11-09
+
+A big fixes release: YouTube and video downloads, crashes and freezes, downloads on slow disks, the Mac helper, plus a Safari extension, far more file types and a few new columns and options.
+
+### Added
+
+- **Torrent → Files…**: the list of a torrent's files for any torrent, running, stopped or finished, with a box to choose each (also a Files… button in File Properties).
+- **Two columns for torrents in the download list** ([#357](https://github.com/anefzaoui/misterdownloadmanager/issues/357)): **Peers** (those a torrent has connected while it runs, seeders and leechers alike) and **Share ratio** (what it has sent against what it took), after **Transfer rate**. A layout saved before them gets them there.
+- The extension's **Media on this page** can name a file after its page: **Prefix media file names with the page title** puts the page's title before the file's own name. Off as installed.
+- **Far more file types taken from the browser by default** ([#382](https://github.com/anefzaoui/misterdownloadmanager/issues/382)): AI models and datasets (GGUF, SAFETENSORS, CKPT, PT, ONNX, PARQUET...), 3D and CAD (GLB, FBX, OBJ, STL, BLEND, STEP...), design and camera RAW files, ebooks, Office files, DAT, disk images and split archives. A list you never edited gains them; one you edited stays yours.
+- **A Safari extension, inside the Mac app:** a click on a link to a file type MDM takes goes to MDM, and so do the right-click items, the button over videos and **Media on this page**, as in the other browsers. Safari gives extensions no access to its downloads, so a download a page starts by itself stays with Safari, and the browser's proxy is not shared. See [Browser integration](docs/browser-integration.md#safari-macos).
+- Help: what to do when an antivirus or VirusTotal flags MDM, and how to check your copy is the real one.
+
+### Changed
+
+- In English, the **Last Try Date** and **Added** columns follow the system's 12- or 24-hour clock: `Oct 28 9:44:12 PM 2026` when Windows uses a 12-hour clock, and **Added** starts wide enough for it ([#392](https://github.com/anefzaoui/misterdownloadmanager/issues/392)).
+
 ### Fixed
 
-- A link sent from the browser no longer fails with 403 on sites whose bot check refuses a browser's User-Agent on a connection that isn't a browser's: MDM asks once more with its own, as Add URL does ([#372](https://github.com/anefzaoui/misterdownloadmanager/issues/372)).
+- With no tray icon to come back from, closing or minimizing the main window now leaves it in the taskbar, with downloads still going, instead of hiding it with no way back. **Options → General → Keep running when closing the window** (on by default) makes closing quit MDM when unticked ([#457](https://github.com/anefzaoui/misterdownloadmanager/pull/457)).
+- Crash reports: a crash monitor that can't open its connection no longer makes MDM wait five seconds at start or stays behind as a second process ([#458](https://github.com/anefzaoui/misterdownloadmanager/pull/458)).
+- Download File Info no longer stays open but out of sight, with every later download waiting behind it ([#440](https://github.com/anefzaoui/misterdownloadmanager/issues/440)). The next one after answering **Create folder** came up as an invisible window, and on Windows one hidden with a minimized main window is now shown again, as is the duplicate question
+- A file name sent by a site in plain UTF-8 now reaches MDM readable from Firefox and browsers built on it, such as Floorp, Waterfox and Zen: an Arabic name was saved as unreadable symbols ([#447](https://github.com/anefzaoui/misterdownloadmanager/issues/447)). A name written with percent signs in the same header is decoded as well. The add-on carries the fix
+- A download saved under a numbered name because another file already had its name (`master (1).mp4`) now shows that name in the list and opens its own file, instead of keeping the old name and opening the other file ([#442](https://github.com/anefzaoui/misterdownloadmanager/issues/442)). Two downloads waiting under one name no longer collide when they start: the later one takes the next free name, instead of failing with "already being downloaded" or continuing the other one's data.
+- A link sent from the browser no longer fails with 403 on sites that refuse a browser's User-Agent on a connection that isn't a browser's: MDM asks once more with its own, as Add URL does ([#372](https://github.com/anefzaoui/misterdownloadmanager/issues/372)).
 - The video download button moves to a free corner instead of covering a control of the page, such as a thumbnail's watch-later button ([#421](https://github.com/anefzaoui/misterdownloadmanager/issues/421)). Dragging it still puts it where you want it.
 - Crash reports: no report any more when one of the download engine's background tasks panics while MDM is already closing ([#422](https://github.com/anefzaoui/misterdownloadmanager/issues/422)).
 - Crash reports: a freeze whose window had recovered by the time its dump was taken is reported as a freeze, not as a crash in MDM's own watchdog ([#420](https://github.com/anefzaoui/misterdownloadmanager/issues/420)).
@@ -27,17 +49,11 @@ Each release's notes on GitHub come from its section here (`## [X.Y.Z]`, see
 - A download refused by a site's bot check (Cloudflare's challenge) says so and how to get the file, instead of "the server answered 403 Forbidden" ([#376](https://github.com/anefzaoui/misterdownloadmanager/issues/376)).
 - **Open folder** works on a torrent that is still downloading ([#354](https://github.com/anefzaoui/misterdownloadmanager/issues/354)).
 - **Alt** and **F10** open the menu bar while a button or the list has the keyboard focus, not only when nothing does ([#328](https://github.com/anefzaoui/misterdownloadmanager/issues/328)).
+- **Hide tab** in a download's window takes the Speed Limiter or Options on completion tab off its tab row, instead of only going back to Download status. Right-click the tab row and choose **Show hidden tabs** to bring them back ([#326](https://github.com/anefzaoui/misterdownloadmanager/issues/326)).
 - Windows: no more crash on a computer where Direct3D can't start, when a window opened during the switch to OpenGL ([#337](https://github.com/anefzaoui/misterdownloadmanager/issues/337)).
 - Windows: no more crash when a screen is unplugged, turned off or rearranged while MDM runs ([#335](https://github.com/anefzaoui/misterdownloadmanager/issues/335)).
-### Added
-
-- **Far more file types taken from the browser by default** ([#382](https://github.com/anefzaoui/misterdownloadmanager/issues/382)): AI models and datasets (GGUF, SAFETENSORS, CKPT, PT, ONNX, PARQUET...), 3D and CAD (GLB, FBX, OBJ, STL, BLEND, STEP...), design and camera RAW files, ebooks, Office files, DAT, disk images and split archives. A list you never edited gains them; one you edited stays yours.
-- **A Safari extension, inside the Mac app:** a click on a link to a file type MDM takes goes to MDM, and so do the right-click items, the button over videos and **Media on this page**, as in the other browsers. Safari gives extensions no access to its downloads, so a download a page starts by itself stays with Safari, and the browser's proxy is not shared. See [Browser integration](docs/browser-integration.md#safari-macos).
-- **Far more file types taken from the browser by default** ([#382](https://github.com/anefzaoui/misterdownloadmanager/issues/382)): AI models and datasets (GGUF, SAFETENSORS, CKPT, PT, ONNX, PARQUET...), 3D and CAD (GLB, FBX, OBJ, STL, BLEND, STEP...), design and camera RAW files, ebooks, Office files, disk images and split archives. A list you never edited gains them; one you edited stays yours.
-- Help: what to do when an antivirus or VirusTotal flags MDM, and how to check your copy is the real one.
-
-### Fixed
-
+- A finished torrent that isn't being shared lets go of its files, so they can be moved or deleted while MDM runs.
+- A torrent says **Checking 42%** while its files are read and checked, and a Recheck no longer stops partway and stays there.
 - Video downloads: the progress no longer says 100 % while a video is still coming, when the site gives no total size, or between a video and its separate sound ([#344](https://github.com/anefzaoui/misterdownloadmanager/issues/344)). A video yt-dlp only knows by its address is named after the page, not a long hash ([#345](https://github.com/anefzaoui/misterdownloadmanager/issues/345)).
 - **A YouTube playlist in Add URL** ([#338](https://github.com/anefzaoui/misterdownloadmanager/issues/338)) opens the video window with its videos, instead of saving the page as a file named "playlist".
 - **Dailymotion's embedded player** ([#359](https://github.com/anefzaoui/misterdownloadmanager/issues/359)): its address is looked up as the video's own page, so the download button works on sites that embed one.
