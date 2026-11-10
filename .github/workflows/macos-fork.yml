@@ -72,12 +72,20 @@ jobs:
             echo "merged=no" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Open an issue when the merge conflicts, then stop
+      - name: Report the conflict and stop (issue when the token allows it)
         if: steps.sync.outputs.merged == 'no'
         run: |
+          set -uo pipefail
           title="Upstream sync needs a hand: $(git tag --list 'v*' --sort=-v:refname | head -n1)"
-          gh issue create --title "$title" --body-file /tmp/sync-conflict.md \
-            || gh issue create --title "Upstream sync needs a hand" --body-file /tmp/sync-conflict.md
+          {
+            echo "## Upstream sync needs a hand"
+            echo
+            cat /tmp/sync-conflict.md
+          } >> "$GITHUB_STEP_SUMMARY"
+          gh issue create --title "$title" --body-file /tmp/sync-conflict.md 2>/dev/null \
+            || gh api --method POST "repos/${GITHUB_REPOSITORY}/issues" \
+                 -f title="$title" -f body="$(cat /tmp/sync-conflict.md)" 2>/dev/null \
+            || echo "::warning::Could not open an issue (the workflow token may lack issues: write); the conflict is in this run's summary."
 
       - name: Skip when this commit was already released
         id: released
@@ -146,9 +154,17 @@ jobs:
             --target macos/native-shell \
             --latest
 
-      - name: Report a failure as an issue
-        if: failure() && steps.sync.outputs.merged != 'no' 
+      - name: Report a failure in the run summary (and as an issue when allowed)
+        if: failure() && steps.sync.outputs.merged != 'no'
         run: |
-          gh issue create \
-            --title "macOS fork build failed" \
-            --body "Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          set -uo pipefail
+          url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          {
+            echo "## macOS fork build failed"
+            echo
+            echo "$url"
+          } >> "$GITHUB_STEP_SUMMARY"
+          gh issue create --title "macOS fork build failed" --body "Run: $url" 2>/dev/null \
+            || gh api --method POST "repos/${GITHUB_REPOSITORY}/issues" \
+                 -f title="macOS fork build failed" -f body="Run: $url" 2>/dev/null \
+            || true
