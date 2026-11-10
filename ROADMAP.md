@@ -491,6 +491,9 @@ These ship in a later version, when they're ready.
 
 ### Being built
 
+- 🔄 Videos sent in pieces (HLS, DASH) downloading several pieces at once, as many as a file's
+  connections ([#531](https://github.com/anefzaoui/misterdownloadmanager/issues/531)): in review;
+  a video in one file (most of YouTube's) still comes over one connection
 - 🔄 Linux and macOS: the system's yt-dlp used when MDM has none of its own, with Helpers able\n  to switch to MDM's copy ([#452](https://github.com/anefzaoui/misterdownloadmanager/issues/452)): in review
 - 🔄 macOS: video look-ups in a copy of MDM a browser downloaded, without the Terminal command
   ([#330](https://github.com/anefzaoui/misterdownloadmanager/issues/330),
