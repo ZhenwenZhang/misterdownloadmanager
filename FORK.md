@@ -34,6 +34,21 @@ User-Agent is refused"), 2026-11-09; changes dated 2026-11-10.
 - **Packaging**: `tools/installer/build-macos.sh` takes `MDM_MACOS_TARGETS=arm64` (or `x86_64`,
   `all`), so a local build can produce only the Apple Silicon disk image.
 
+## Automatic builds
+
+[`.github/workflows/macos-fork.yml`](.github/workflows/macos-fork.yml) runs daily (and on
+demand): it fetches the newest upstream `v*` tag, merges it into `macos/native-shell`, runs the
+app's tests, builds the Apple Silicon disk image and publishes a GitHub release
+(`macos-YYYY-MM-DD`) with the `.dmg`, its SHA-256 and the symbols.
+
+- A merge conflict stops before anything is pushed or published and opens an issue naming the
+  files to resolve by hand; the branch, last release and the published assets stay as they were.
+- A commit already released is skipped, so the daily run is cheap when nothing changed.
+- Forks start with workflows disabled: enable them in the **Actions** tab, and set
+  *Settings → Actions → General → Workflow permissions* to **Read and write** so the run can
+  push the merge and create the release. Scheduled runs only fire on the default branch
+  (`macos/native-shell` here).
+
 ## Building
 
 ```bash

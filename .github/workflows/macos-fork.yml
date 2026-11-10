@@ -1,0 +1,154 @@
+# The fork's own release pipeline: notice a new upstream release, merge it into the macOS
+# branch, test and build the Apple Silicon disk image, and publish a GitHub release.
+#
+# Forks do not run workflows until they are enabled (the Actions tab) and their token may be
+# read-only (Settings → Actions → General → Workflow permissions: Read and write). Scheduled
+# runs only happen on the default branch, which this fork sets to macos/native-shell.
+#
+# A merge conflict (upstream touched a file this fork also changed) stops before anything is
+# published and opens an issue with the branch to fix by hand. Nothing is pushed unless the
+# tests and the build pass.
+name: macOS fork build
+
+on:
+  schedule:
+    # Daily, 06:17 Beijing (22:17 UTC the day before).
+    - cron: "17 22 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: macos-fork-build
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-14
+    timeout-minutes: 150
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: macos/native-shell
+          fetch-depth: 0
+
+      - name: Merge the newest upstream release
+        id: sync
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/anefzaoui/misterdownloadmanager.git 2>/dev/null || true
+          git fetch --force --tags upstream
+          latest="$(git tag --list 'v*' --sort=-v:refname | head -n1)"
+          echo "upstream tag: ${latest}"
+          if git merge-base --is-ancestor "$latest" HEAD; then
+            echo "already merged"
+            echo "merged=yes" >> "$GITHUB_OUTPUT"
+          elif git merge --no-edit "$latest"; then
+            echo "merged=yes" >> "$GITHUB_OUTPUT"
+          else
+            conflicted="$(git diff --name-only --diff-filter=U || true)"
+            git merge --abort
+            {
+              echo "The newest upstream release \`${latest}\` conflicts with this fork's macOS"
+              echo "branch. Merge it by hand:"
+              echo
+              echo '```'
+              echo "git fetch https://github.com/anefzaoui/misterdownloadmanager.git tag ${latest}"
+              echo "git merge ${latest}"
+              echo '```'
+              echo
+              echo "Files in conflict:"
+              echo
+              echo '```'
+              git diff --name-only --diff-filter=U || true
+              echo '```'
+            } > /tmp/sync-conflict.md
+            echo "merged=no" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open an issue when the merge conflicts, then stop
+        if: steps.sync.outputs.merged == 'no'
+        run: |
+          title="Upstream sync needs a hand: $(git tag --list 'v*' --sort=-v:refname | head -n1)"
+          gh issue create --title "$title" --body-file /tmp/sync-conflict.md \
+            || gh issue create --title "Upstream sync needs a hand" --body-file /tmp/sync-conflict.md
+
+      - name: Skip when this commit was already released
+        id: released
+        run: |
+          set -euo pipefail
+          last="$(gh release list --limit 1 --json tagName --jq '.[0].tagName // empty')"
+          if [ -n "$last" ] && [ "$(git rev-list -n1 "$last")" = "$(git rev-parse HEAD)" ]; then
+            echo "skip=yes" >> "$GITHUB_OUTPUT"
+            echo "HEAD is already in $last"
+          else
+            echo "skip=no" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Rust
+        if: steps.sync.outputs.merged == 'yes' && steps.released.outputs.skip == 'no'
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add aarch64-apple-darwin
+
+      - name: PowerShell (tools/extension/pack.ps1)
+        if: steps.sync.outputs.merged == 'yes' && steps.released.outputs.skip == 'no'
+        run: command -v pwsh >/dev/null || brew install powershell
+
+      - name: Test the app
+        if: steps.sync.outputs.merged == 'yes' && steps.released.outputs.skip == 'no'
+        run: cargo test -p mdm-app
+
+      - name: Build the Apple Silicon disk image
+        if: steps.sync.outputs.merged == 'yes' && steps.released.outputs.skip == 'no'
+        run: MDM_MACOS_TARGETS=arm64 tools/installer/build-macos.sh
+
+      - name: Publish the release
+        if: steps.sync.outputs.merged == 'yes' && steps.released.outputs.skip == 'no'
+        run: |
+          set -euo pipefail
+          git push origin macos/native-shell
+          day="$(date +%F)"
+          tag="macos-$day"
+          n=2
+          while gh release view "$tag" >/dev/null 2>&1; do
+            tag="macos-$day-$n"
+            n=$((n + 1))
+          done
+          dmg="MisterDownloadManager-$day-macos-arm64.dmg"
+          cp "target/dist/MisterDownloadManager-$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' Cargo.toml | head -1)-macos-arm64-experimental.dmg" "/tmp/$dmg"
+          (cd /tmp && shasum -a 256 "$dmg" > SHA256SUMS-macos.txt)
+          symbols="MisterDownloadManager-$day-symbols-macos-arm64.zip"
+          cp target/dist/MisterDownloadManager-*-symbols-macos-arm64.zip "/tmp/$symbols"
+          {
+            echo "Unofficial macOS native build from this fork (not endorsed by the upstream author)."
+            echo "GPL-3.0-or-later; source is this repository at tag \`$tag\`."
+            echo
+            echo "Apple Silicon only, macOS 11 or later. Ad-hoc signed: on the first start,"
+            echo "right-click the app → Open."
+            echo
+            echo "What changed: [FORK.md](https://github.com/${GITHUB_REPOSITORY}/blob/$tag/FORK.md)."
+            echo
+            echo '```'
+            cat /tmp/SHA256SUMS-macos.txt
+            echo '```'
+          } > /tmp/notes.md
+          gh release create "$tag" "/tmp/$dmg" "/tmp/SHA256SUMS-macos.txt" "/tmp/$symbols" \
+            --title "macOS native build $day (Apple Silicon)" \
+            --notes-file /tmp/notes.md \
+            --target macos/native-shell \
+            --latest
+
+      - name: Report a failure as an issue
+        if: failure() && steps.sync.outputs.merged != 'no' 
+        run: |
+          gh issue create \
+            --title "macOS fork build failed" \
+            --body "Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
