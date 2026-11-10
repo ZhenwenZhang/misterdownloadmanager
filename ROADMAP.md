@@ -521,7 +521,8 @@ These ship in a later version, when they're ready.
 ### Bugs being looked into
 
 - 🔄 Two tests that fail now and then on busy CI runners
-  ([#518](https://github.com/anefzaoui/misterdownloadmanager/issues/518)): the slow-flush one in review
+  ([#518](https://github.com/anefzaoui/misterdownloadmanager/issues/518)): the slow-flush one fixed;
+  the crash-and-resume one found a real delay in saving a new download's progress, fix in review
 - 🔄 The window not answering for a few seconds while Windows makes a snapshot of the disk
   (a restore point or a backup) ([#513](https://github.com/anefzaoui/misterdownloadmanager/issues/513)):
   the log and the RSS feeds are now written beside the window, as the list already was; fix in

@@ -2237,12 +2237,12 @@ async fn segmented(
 ///
 /// A flush holds every write to the file for as long as it runs (NTFS, measured, #361), so on a
 /// disk where it takes seconds, flushing as often as the file grows left the download frozen
-/// most of the time. The next flush therefore waits nine times as long as the last one took,
-/// at most `SYNC_GAP_MAX`: at most a tenth of the time goes to flushing, and on a fast disk
-/// (a flush of a few milliseconds) nothing changes. What it gives up: after a power cut or a
-/// crash the bytes since the last flush are downloaded again, so on a slow disk up to
-/// `SYNC_GAP_MAX` of them (at 1 Gbit/s about 7 GB) instead of about 2 s of them. The saved
-/// positions still never claim bytes that weren't flushed.
+/// most of the time. The next flush therefore waits nine times as long as the last flush during
+/// the transfer took (`forced_gap`), at most `SYNC_GAP_MAX`: at most a tenth of the time goes
+/// to flushing, and on a fast disk (a flush of a few milliseconds) nothing changes. What it
+/// gives up: after a power cut or a crash the bytes since the last flush are downloaded again,
+/// so on a slow disk up to `SYNC_GAP_MAX` of them (at 1 Gbit/s about 7 GB) instead of about 2 s
+/// of them. The saved positions still never claim bytes that weren't flushed.
 const SYNC_BYTES_MAX: u64 = 64 << 20;
 const SYNC_BYTES_MIN: u64 = 1 << 20;
 const SYNC_EVERY: Duration = Duration::from_secs(30);
@@ -2340,9 +2340,17 @@ async fn save_state(
     *synced = Synced {
         at: std::time::Instant::now(),
         bytes,
-        took: began.elapsed(),
+        took: forced_gap(force, began.elapsed()),
     };
     Ok(())
+}
+
+/// The flush time that spaces out the next flush. A forced save runs while no connection
+/// writes (before they start, after they stop), so it holds no transfer up and doesn't push the
+/// next save back: the first one at the start, which also pays for creating the part file, once
+/// delayed the first save of progress past the end of a short download (#518).
+fn forced_gap(force: bool, took: Duration) -> Duration {
+    if force { Duration::ZERO } else { took }
 }
 
 /// A plain 403, which a browser's User-Agent may have brought on (#372). A site's bot check
@@ -3507,6 +3515,21 @@ mod tests {
         assert!(!at(Duration::from_millis(8)).due(1 << 20, 45 * gb, s(2)));
         // Few bytes on a fast disk: still the long wait.
         assert!(at(Duration::from_millis(8)).due(1 << 20, 45 * gb, s(30)));
+    }
+
+    /// #518: when the forced save at the start (no connection writing yet) takes 0.5 s on a busy
+    /// disk, the first save of progress still comes at the first tick, not 4.5 s later.
+    #[test]
+    fn a_forced_save_does_not_push_the_next_back() {
+        let at = |took| Synced {
+            at: std::time::Instant::now(),
+            bytes: 0,
+            took,
+        };
+        let (slow, tick) = (Duration::from_millis(500), Duration::from_secs(2));
+        assert!(at(forced_gap(true, slow)).due(15 << 20, 24 << 20, tick));
+        // A save during the transfer still does.
+        assert!(!at(forced_gap(false, slow)).due(15 << 20, 24 << 20, tick));
     }
 
     #[test]
