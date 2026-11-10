@@ -520,6 +520,9 @@ These ship in a later version, when they're ready.
 
 ### Bugs being looked into
 
+- 🔄 macOS: Persian and other Arabic-script file names drawn as boxes in the download list
+  ([#533](https://github.com/anefzaoui/misterdownloadmanager/issues/533)): fix in review, to
+  confirm on a Mac
 - 🔄 Two tests that fail now and then on busy CI runners
   ([#518](https://github.com/anefzaoui/misterdownloadmanager/issues/518)): the slow-flush one in review
 - 🔄 The window not answering for a few seconds while Windows makes a snapshot of the disk
