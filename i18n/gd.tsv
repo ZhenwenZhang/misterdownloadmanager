@@ -5589,6 +5589,10 @@ column	Time left	Ùine air fhàgail
 #. column title in the download list in the download list
 #, machine
 column	Transfer rate	Ìre gluasaid
+#. column title in the download list in the download list
+#. column title: what a torrent sends to peers, bytes per second
+#, machine
+column	Upload speed	Luaths luchdaidh suas
 #. text in the browser extension
 #. choice under Send downloads to: an MDM running on another computer of the network, such as a home server; keep the name Mister Download Manager as it is
 #, machine

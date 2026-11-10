@@ -199,6 +199,11 @@ fn lookup_lines(s: &LookupStatus, secs: u64) -> (String, String, Option<&'static
 }
 
 impl TorrentDialog {
+    /// The magnet link, .torrent path or address in its box.
+    pub fn source(&self) -> &str {
+        &self.source
+    }
+
     /// `source`: a magnet link, a .torrent path or a .torrent's web address (`remote`: how to
     /// ask for it) to look up at once, or None (the clipboard's magnet, if any, is offered and
     /// looked up).

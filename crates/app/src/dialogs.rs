@@ -444,9 +444,12 @@ fn dialog_window<T>(
         crate::theme::dark_surface(),
         matches!(out, Outcome::Open),
     );
-    // A question takes the focus once it is shown (not while hidden for its theme).
+    // A question takes the focus once it is shown (not while hidden for its theme), and so does
+    // Download File Info outside Windows (#484): asked for from the browser, it opened behind
+    // it. Windows lifts it in keep_theme instead.
     let focused = key.with("focus-sent");
-    if modal && matches!(out, Outcome::Open) && !crate::offscreen() {
+    let takes_focus = modal || (cfg!(not(windows)) && id == "file-info");
+    if takes_focus && matches!(out, Outcome::Open) && !crate::offscreen() {
         let shown = ctx.data(|d| d.get_temp::<bool>(key.with("shown")).unwrap_or(false));
         if shown && !ctx.data(|d| d.get_temp::<bool>(focused).unwrap_or(false)) {
             ctx.send_viewport_cmd_to(ViewportId::from_hash_of(id), egui::ViewportCommand::Focus);
@@ -596,6 +599,10 @@ pub struct AddUrl {
     /// The addresses entered before, newest first (the Address drop list).
     history: Vec<String>,
     list_open: bool,
+    /// The address Options → Sites Logins was last looked up for, and the login it gave
+    /// (#511): "Use authorization" shows it while the box is left as it was filled.
+    looked_up: String,
+    filled: Option<(String, String)>,
 }
 
 pub struct NewUrl {
@@ -620,7 +627,44 @@ impl AddUrl {
         }
     }
 
-    pub fn show(&mut self, ctx: &egui::Context) -> Outcome<NewUrl> {
+    /// "Use authorization" shows the Sites Logins entry the download will use for the address
+    /// (#511): `site_login` is that same match (`Settings::site_login`). A login typed or
+    /// changed in the box is left alone; one filled from Options follows the address.
+    fn follow_site_login(&mut self, site_login: impl Fn(&Url) -> Option<(String, String)>) {
+        if self.looked_up == self.address {
+            return;
+        }
+        self.looked_up.clone_from(&self.address);
+        let found = crate::model::parse_address(&self.address)
+            .ok()
+            .and_then(|u| site_login(&u));
+        if found == self.filled {
+            return;
+        }
+        let as_filled = match &self.filled {
+            Some((user, pass)) => self.auth && self.login == *user && self.password == *pass,
+            None => !self.auth && self.login.is_empty() && self.password.is_empty(),
+        };
+        if as_filled {
+            self.auth = found.is_some();
+            (self.login, self.password) = found.clone().unwrap_or_default();
+        }
+        self.filled = found;
+    }
+
+    /// The login OK hands on: none while the box shows the Sites Logins entry as it was filled,
+    /// so the download keeps following Options, as it does without one.
+    fn typed_login(&self) -> Option<(String, String)> {
+        let own = (self.login.clone(), self.password.clone());
+        (self.auth && self.filled.as_ref() != Some(&own)).then_some(own)
+    }
+
+    pub fn show(
+        &mut self,
+        ctx: &egui::Context,
+        site_login: impl Fn(&Url) -> Option<(String, String)>,
+    ) -> Outcome<NewUrl> {
+        self.follow_site_login(site_login);
         window(
             ctx,
             "add-url",
@@ -780,9 +824,7 @@ impl AddUrl {
                         Ok(url) if mdm_engine::supported(&url) || url.scheme() == "magnet" => {
                             return Outcome::Done(NewUrl {
                                 url,
-                                login: self
-                                    .auth
-                                    .then(|| (self.login.clone(), self.password.clone())),
+                                login: self.typed_login(),
                             });
                         }
                         _ => self.error = Some(crate::i18n::t("Invalid address").into()),
@@ -3179,7 +3221,7 @@ mod tests {
                 };
                 for _ in 0..6 {
                     let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
-                        let _ = dlg.show(ui.ctx());
+                        let _ = dlg.show(ui.ctx(), |_| None);
                     });
                     out.textures_delta.clear();
                 }
@@ -3188,6 +3230,55 @@ mod tests {
         });
         rx.recv_timeout(std::time::Duration::from_secs(20))
             .expect("Add URL hung");
+    }
+
+    /// #511: an address with an Options → Sites Logins entry shows that login in "Use
+    /// authorization" (the match the download uses), follows the address while left as filled,
+    /// and keeps a login typed in the box. OK hands on only a login of the user's own.
+    #[test]
+    fn add_url_shows_the_sites_logins_entry_for_its_address() {
+        // A made-up login; asserts don't print it.
+        const PASS: &str = "dummy-pass";
+        let settings = crate::settings::Settings {
+            site_logins: vec![(
+                "files.example.com/private".into(),
+                "demo".into(),
+                PASS.into(),
+            )],
+            ..Default::default()
+        };
+        let ctx = egui::Context::default();
+        let mut dlg = AddUrl {
+            address: "https://files.example.com/private/x.zip".into(),
+            ..AddUrl::default()
+        };
+        let pass = |dlg: &mut AddUrl| {
+            let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+                let _ = dlg.show(ui.ctx(), |u| settings.site_login(u));
+            });
+            out.textures_delta.clear();
+        };
+        pass(&mut dlg);
+        assert!(dlg.auth, "Use authorization is ticked");
+        assert_eq!(dlg.login, "demo");
+        assert!(dlg.password == PASS, "the password is the saved one");
+        assert!(dlg.typed_login().is_none(), "the download follows Options");
+
+        // Another address: the box filled from Options empties again.
+        dlg.address = "https://files.example.com/public/x.zip".into();
+        pass(&mut dlg);
+        assert!(!dlg.auth);
+        assert!(dlg.login.is_empty() && dlg.password.is_empty());
+
+        // Back to the address, then a login typed over it: kept, and handed on.
+        dlg.address = "https://files.example.com/private/y.zip".into();
+        pass(&mut dlg);
+        assert!(dlg.auth && dlg.login == "demo");
+        dlg.login = "someone".into();
+        dlg.address = "https://files.example.com/public/y.zip".into();
+        pass(&mut dlg);
+        assert!(dlg.auth && dlg.login == "someone", "a typed login stays");
+        assert_eq!(dlg.typed_login().map(|l| l.0).as_deref(), Some("someone"));
     }
 
     /// #207: a dialog closed by the window manager (its title bar's ×) is painted in the pass

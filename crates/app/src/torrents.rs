@@ -15,8 +15,9 @@ use mdm_engine::download::State;
 use mdm_torrent::{Config, Phase, Torrents};
 use serde::{Deserialize, Serialize};
 
-/// What a torrent download keeps in the list (downloads.json).
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// What a torrent download keeps in the list (downloads.json). `Eq` is not derived: its live
+/// `up_speed` is an `f64`, and nothing compares a whole spec for equality.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TorrentSpec {
     /// The info hash, 40 hex digits; the .torrent itself is in [`torrent_file`].
     pub hash: String,
@@ -36,6 +37,10 @@ pub struct TorrentSpec {
     /// session or the session has no numbers for it.
     #[serde(skip)]
     pub peers: usize,
+    /// What it sends to peers right now, bytes/s (#357), for the list's "Upload speed" column.
+    /// Live only, like [`peers`](Self::peers): never saved, zero without a session or stats.
+    #[serde(skip)]
+    pub up_speed: f64,
     /// Its own upload limit, bytes/s (None: only Torrent settings' limit for all torrents).
     #[serde(default)]
     pub upload_limit: Option<u64>,
@@ -106,9 +111,13 @@ pub fn sharing_limit_reached(
     None
 }
 
-/// No session is running: nothing is connected, whatever the list last showed (#357).
-pub fn clear_peers<'a>(specs: impl Iterator<Item = &'a mut TorrentSpec>) {
-    specs.for_each(|t| t.peers = 0);
+/// No session is running: nothing is connected and nothing is moving, whatever the list last
+/// showed (#357).
+pub fn clear_live<'a>(specs: impl Iterator<Item = &'a mut TorrentSpec>) {
+    specs.for_each(|t| {
+        t.peers = 0;
+        t.up_speed = 0.0;
+    });
 }
 
 /// A torrent's share ratio: what it sent to peers against what it has. Zero while it has nothing.
@@ -1078,6 +1087,7 @@ mod tests {
             uploaded: 0,
             seeded_secs: 0,
             peers: 0,
+            up_speed: 0.0,
             upload_limit: None,
             in_order: false,
             ends_first: true,
@@ -1100,32 +1110,39 @@ mod tests {
         assert_eq!(share_ratio_text(1, 3), "0.33");
     }
 
-    /// #357: a torrent's live peer count isn't kept across a restart: it isn't saved and an old
-    /// value in the file is ignored, so a stopped torrent can't show a stale count.
+    /// #357: a torrent's live numbers aren't kept across a restart: they aren't saved and an old
+    /// value in the file is ignored, so a stopped torrent can't show a stale count or rate.
     #[test]
-    fn a_torrents_peers_are_not_saved() {
+    fn a_torrents_live_numbers_are_not_saved() {
         let mut t = a_spec();
         t.peers = 7;
+        t.up_speed = 4096.0;
         let saved = serde_json::to_value(&t).unwrap();
         assert!(saved.get("peers").is_none(), "the count isn't written");
+        assert!(saved.get("up_speed").is_none(), "the rate isn't written");
         let mut with_old = saved.clone();
         with_old["peers"] = 9.into();
         with_old["seeders"] = 9.into();
+        with_old["up_speed"] = 999.0.into();
         let loaded: TorrentSpec = serde_json::from_value(with_old).unwrap();
         assert_eq!(
             loaded.peers, 0,
             "an old value in the file doesn't come back"
         );
+        assert_eq!(loaded.up_speed, 0.0, "nor does an old rate");
     }
 
-    /// #357: with no session running, the column says nobody is connected.
+    /// #357: with no session running, the columns say nobody is connected and nothing is moving.
     #[test]
-    fn no_session_means_no_peers() {
+    fn no_session_means_no_live_numbers() {
         let mut specs = [a_spec(), a_spec()];
         specs[0].peers = 3;
+        specs[0].up_speed = 4096.0;
         specs[1].peers = 12;
-        clear_peers(specs.iter_mut());
+        specs[1].up_speed = 1024.0;
+        clear_live(specs.iter_mut());
         assert_eq!([specs[0].peers, specs[1].peers], [0, 0]);
+        assert_eq!([specs[0].up_speed, specs[1].up_speed], [0.0, 0.0]);
     }
 
     /// #39: what a torrent sent adds up across its runs: librqbit's count is 0 while paused
@@ -1183,6 +1200,7 @@ mod tests {
             uploaded,
             seeded_secs,
             peers: 0,
+            up_speed: 0.0,
             upload_limit: None,
             in_order: false,
             ends_first: true,

@@ -5589,6 +5589,10 @@ column	Time left	वेळ उरला
 #. column title in the download list in the download list
 #, machine
 column	Transfer rate	हस्तांतरण दर
+#. column title in the download list in the download list
+#. column title: what a torrent sends to peers, bytes per second
+#, machine
+column	Upload speed	अपलोड वेग
 #. text in the browser extension
 #. choice under Send downloads to: an MDM running on another computer of the network, such as a home server; keep the name Mister Download Manager as it is
 #, machine

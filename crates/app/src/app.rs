@@ -508,6 +508,11 @@ pub struct App {
     /// Download a gallery (#58).
     gallery_dlg: Option<crate::gallerydlg::GalleryDialog>,
     torrent_dlg: Option<crate::torrentdlg::TorrentDialog>,
+    /// Magnet links and .torrents handed over while Add torrent was open (#507), oldest first:
+    /// each opens in Add torrent when the one before it closes.
+    torrent_waiting: std::collections::VecDeque<(String, Option<crate::torrents::Remote>)>,
+    /// Add torrent closed this frame: the next waiting one opens after a frame without it.
+    torrent_closed: bool,
     torrent_settings: Option<crate::torrentdlg::TorrentSettings>,
     /// Right-click → Torrent → Add trackers… (#39).
     add_trackers: Option<crate::torrentdlg::AddTrackers>,
@@ -897,8 +902,13 @@ fn sort_key(it: &Item, col: usize, queued: bool) -> (f64, String) {
         // Added: the order of addition itself (ids only grow), exact even without a time.
         list::ADDED => (it.id as f64, String::new()),
         list::SOURCE => (f64::from(u8::from(it.torrent.is_some())), String::new()),
-        // A torrent's peers, and its share ratio (not the text: "10" would come before "9").
-        // Anything but a torrent, and a torrent that has taken nothing, sort as zero.
+        // A torrent's upload, its peers, and its share ratio (not the text: "10" would come
+        // before "9"). Anything but a torrent, and a torrent that has taken nothing, sorts as
+        // zero.
+        list::UPLOAD => (
+            it.torrent.as_ref().map_or(0.0, |t| t.up_speed),
+            String::new(),
+        ),
         list::PEERS => (
             it.torrent.as_ref().map_or(0.0, |t| t.peers as f64),
             String::new(),
@@ -1118,6 +1128,8 @@ impl App {
             video_dlg: None,
             gallery_dlg: None,
             torrent_dlg: None,
+            torrent_waiting: Default::default(),
+            torrent_closed: false,
             torrent_settings: None,
             add_trackers: None,
             torrent_files: None,
@@ -1425,14 +1437,18 @@ impl App {
                     // i18n: where a download comes from: a web or FTP server (shown on a small colored label)
                     "Web".into()
                 },
-                // A torrent's own numbers (#357): the peers it has, and what it gave back
-                // against what it took (as the progress window's General tab works it out).
+                // A torrent's own numbers (#357), in their slots' order (list::PEERS, RATIO, then
+                // UPLOAD, added last so saved layouts keep their meaning): the peers it has, what
+                // it gave back against what it took (as the General tab works it out), what it sends.
                 it.torrent
                     .as_ref()
                     .map_or(String::new(), |t| crate::i18n::integer(t.peers as u64)),
                 it.torrent.as_ref().map_or(String::new(), |t| {
                     crate::torrents::share_ratio_text(t.uploaded, it.downloaded)
                 }),
+                it.torrent
+                    .as_ref()
+                    .map_or(String::new(), |t| model::rate(t.up_speed)),
             ],
         }
     }
@@ -1838,7 +1854,7 @@ impl App {
             for i in self.items.iter_mut() {
                 i.torrent_check = None;
             }
-            crate::torrents::clear_peers(self.items.iter_mut().filter_map(|i| i.torrent.as_mut()));
+            crate::torrents::clear_live(self.items.iter_mut().filter_map(|i| i.torrent.as_mut()));
             return;
         };
         let limits = self.settings.sharing_limits();
@@ -1853,6 +1869,7 @@ impl App {
                 // Out of the session (released when it finished): no check is running.
                 i.torrent_check = None;
                 spec.peers = 0;
+                spec.up_speed = 0.0;
                 continue;
             };
             // Keep the session's in-memory checking progress visible for stopped/complete
@@ -1867,6 +1884,7 @@ impl App {
             // The peers it has now, for the list's "Peers" column (#357). Not a reason to save:
             // it changes as peers come and go, and the next tick brings the list up to date.
             spec.peers = st.peers_live;
+            spec.up_speed = st.up_speed;
             if st.phase == mdm_torrent::Phase::Finished && dt > 0 {
                 spec.seeded_secs += dt;
                 changed = true;
@@ -3700,7 +3718,19 @@ impl App {
             self.show_window(ctx);
             return;
         }
-        if self.torrent_dlg.is_some() {
+        if let Some(open) = &self.torrent_dlg {
+            // One Add torrent at a time: a torrent handed over meanwhile waits its turn (#507).
+            // Add torrent… from the menu with it open (no source) has nothing to wait for.
+            if let Some(source) = source
+                && open.source() != source
+                && !self.torrent_waiting.iter().any(|(s, _)| *s == source)
+            {
+                tracing::info!(
+                    "Add torrent is open: a torrent waits ({} waiting)",
+                    self.torrent_waiting.len() + 1
+                );
+                self.torrent_waiting.push_back((source, remote));
+            }
             return;
         }
         self.torrent_dlg = Some(crate::torrentdlg::TorrentDialog::new(
@@ -3871,6 +3901,7 @@ impl App {
                 uploaded: 0,
                 seeded_secs: 0,
                 peers: 0,
+                up_speed: 0.0,
                 upload_limit: None,
                 in_order: add.in_order,
                 ends_first: true,
@@ -8085,7 +8116,7 @@ impl App {
             }
         }
         if let Some(d) = &mut self.add_url {
-            let out = d.show(ctx);
+            let out = d.show(ctx, |url| self.settings.site_login(url));
             // Every address that goes on is remembered for the Address drop list.
             if let Outcome::Done(new) = &out {
                 crate::settings::remember(&mut self.settings.url_history, new.url.as_str());
@@ -8390,14 +8421,36 @@ impl App {
         if let Some((id, (files, all, size))) = torrent_files_selection {
             self.choose_files(id, files, all, size);
         }
+        // The next torrent handed over while Add torrent was open (#507), a frame after it
+        // closed: that frame without it closes its window, and the next one opens as a window
+        // of its own (opened in the same frame, the closed window would only change its
+        // contents). One that goes to the debrid account opens nothing, and the one after it
+        // is next.
+        if self.torrent_dlg.is_none() && !self.torrent_waiting.is_empty() {
+            if std::mem::take(&mut self.torrent_closed) {
+                ctx.request_repaint();
+            } else {
+                while self.torrent_dlg.is_none()
+                    && let Some((source, remote)) = self.torrent_waiting.pop_front()
+                {
+                    self.open_torrent_dialog_with(Some(source), remote, ctx);
+                }
+            }
+        }
         if let Some(t) = &mut self.torrent_dlg {
-            match t.show(ctx, &self.rt) {
-                Outcome::Open => {}
-                Outcome::Closed => self.torrent_dlg = None,
+            let closed = match t.show(ctx, &self.rt) {
+                Outcome::Open => false,
+                Outcome::Closed => true,
                 Outcome::Done(add) => {
                     self.torrent_dlg = None;
                     self.add_torrent(add);
+                    true
                 }
+            };
+            if closed {
+                self.torrent_dlg = None;
+                self.torrent_closed = true;
+                ctx.request_repaint();
             }
         }
         if let Some(g) = &mut self.gallery_dlg {

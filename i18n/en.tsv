@@ -4160,6 +4160,9 @@ column	Status	Status
 column	Time left	Time left
 #. column title in the download list in the download list
 column	Transfer rate	Transfer rate
+#. column title in the download list in the download list
+#. column title: what a torrent sends to peers, bytes per second
+column	Upload speed	Upload speed
 #. text in the browser extension
 #. choice under Send downloads to: an MDM running on another computer of the network, such as a home server; keep the name Mister Download Manager as it is
 extension	Another Mister Download Manager (a server)	Another Mister Download Manager (a server)
