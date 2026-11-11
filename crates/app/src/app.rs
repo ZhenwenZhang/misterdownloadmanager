@@ -2420,7 +2420,12 @@ impl App {
         // Options → Downloads → "Show start download dialog" off: start (or only queue) at once.
         let skip_dialog = !self.settings.show_start_dialog;
         if cmd.later || cmd.silent || skip_dialog {
-            let guessed = cmd.name.is_none();
+            // A browser's file name is its own guess (the address, or what it saw of the
+            // response): the server's Content-Disposition names the file, as it does for the
+            // browser. A name typed in — the command line's `name`, the automation API — stays.
+            let from_browser =
+                cmd.referer.is_some() || cmd.cookies.is_some() || !cmd.cookie_jar.is_empty();
+            let guessed = cmd.name.is_none() || from_browser;
             let name = cmd
                 .name
                 .clone()
@@ -2444,7 +2449,7 @@ impl App {
                 .unwrap_or_else(|| self.settings.category_dir(category, &self.downloads));
             let dest = mdm_engine::naming::destination(&dir, &name);
             let later = cmd.later || (skip_dialog && self.settings.only_add_to_queue);
-            let source = if cmd.referer.is_some() || cmd.cookies.is_some() {
+            let source = if from_browser {
                 crate::i18n::mark("from the browser")
             } else {
                 crate::i18n::mark("from the command line")
