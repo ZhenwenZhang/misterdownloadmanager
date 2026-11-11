@@ -359,6 +359,10 @@ pub struct Item {
     /// added before the column existed have none.
     #[serde(default)]
     pub added: Option<String>,
+    /// When it last finished ("Completed" column): its file was written whole. None while it
+    /// has never finished, and for rows saved before the column existed.
+    #[serde(default)]
+    pub completed: Option<String>,
     /// Its own speed limit, bytes/s (progress window → Speed Limiter, "Remember Speed Limiter
     /// settings for this file on download stop/resume"): used again whenever it starts.
     #[serde(default)]
@@ -690,6 +694,7 @@ impl Item {
             resumable: None,
             checksum: None,
             added: Some(now_stamp()),
+            completed: None,
             own_limit: None,
             video: None,
             torrent: None,
@@ -789,6 +794,11 @@ impl Item {
         };
         match ended {
             Some(status) => {
+                // Stamp the moment it finishes, once: the same Done snapshot arrives every tick
+                // while the window is open.
+                if status == Status::Complete && self.status != Status::Complete {
+                    self.completed = Some(now_stamp());
+                }
                 self.status = status;
                 // In the interface language; the engine's English when it gave no failure.
                 self.error = s.failure.as_ref().map(crate::errors::describe).or(s.error);

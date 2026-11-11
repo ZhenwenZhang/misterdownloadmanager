@@ -712,6 +712,9 @@
 #. a download's status (state it is in, not a command)
 #. a download's status (state it is in, not a command): finished
 	Complete	Complete
+#. text in macos_main.rs
+#. column title in the download list: when the download finished
+	Completed	Completed
 #. text in the download list (sizes, speeds, status)
 #. category name: compressed archives (zip, rar, 7z)
 	Compressed	Compressed

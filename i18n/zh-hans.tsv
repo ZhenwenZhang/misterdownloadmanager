@@ -1,5 +1,6 @@
 # Mister Download Manager in Chinese (Simplified) (简体中文): tools/i18n/translate.py
 # writes the rows marked '#, machine'; a native speaker deletes that line after checking.
+	Completed	完成时间
 # context	source	translation (craft-i18n format, rows as in en.tsv)
 @id	language.name	简体中文
 #. count in a dialog box

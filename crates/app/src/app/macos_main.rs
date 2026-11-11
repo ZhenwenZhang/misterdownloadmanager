@@ -127,6 +127,8 @@ struct MacRow {
     source: String,
     resumable: String,
     added: String,
+    /// When it finished ("Completed" column), already in the list's date format; "-" otherwise.
+    completed: String,
     active_connections: usize,
 }
 
@@ -171,6 +173,13 @@ impl MacRow {
                 .added
                 .as_deref()
                 .map_or_else(|| "-".to_owned(), model::date_text),
+            completed: if item.status == Status::Complete {
+                item.completed
+                    .as_deref()
+                    .map_or_else(|| "-".to_owned(), model::date_text)
+            } else {
+                "-".to_owned()
+            },
             active_connections,
         }
     }
@@ -907,10 +916,14 @@ impl App {
             Stroke::new(1.0, blend(colors.surface, colors.border, 0.8)),
         );
         let w = rect.width();
-        let metrics_w = if w > 690.0 { 330.0 } else { 220.0 };
-        let right_w = if w > 690.0 { 108.0 } else { 74.0 };
-        let bar_left = rect.right() - metrics_w + 8.0;
-        let bar_right = (rect.right() - 16.0 - right_w - 8.0 - 40.0 - 8.0).max(bar_left + 32.0);
+        let right_edge = rect.right() - 16.0;
+        let time_w = 132.0;
+        let value_w = if w > 690.0 { 108.0 } else { 74.0 };
+        let gap = 12.0;
+        let percent_w = 40.0;
+        let value_right = right_edge - time_w - gap;
+        let progress_right = value_right - value_w - gap;
+        let progress_left = progress_right - percent_w;
         let cy = rect.center().y;
         let mut sort = None;
         if column_header(
@@ -924,28 +937,28 @@ impl App {
         ) {
             sort = Some(0);
         }
-        if column_header(
-            ui,
-            "Size",
-            2,
-            rect.right() - 16.0,
-            cy,
-            self.list.sort,
-            colors,
-        ) {
+        if column_header(ui, "Size", 2, value_right, cy, self.list.sort, colors) {
             sort = Some(2);
         }
         if column_header(
             ui,
             "Progress",
             3,
-            (bar_left + bar_right) / 2.0,
+            (progress_left + progress_right) / 2.0,
             cy,
             self.list.sort,
             colors,
         ) {
             sort = Some(3);
         }
+        ui.painter().text(
+            pos2(right_edge, cy),
+            Align2::RIGHT_CENTER,
+            // i18n: column title in the download list: when the download finished
+            crate::i18n::t("Completed"),
+            FontId::proportional(11.5),
+            colors.subtle,
+        );
         if let Some(column) = sort {
             self.list.sort = Some(match self.list.sort {
                 Some((current, ascending)) if current == column => (column, !ascending),
@@ -1061,8 +1074,15 @@ impl App {
         );
 
         let name_left = rect.left() + 40.0;
-        let metrics_w = if rect.width() > 690.0 { 330.0 } else { 220.0 };
-        let metrics_left = rect.right() - metrics_w;
+        let right_edge = rect.right() - 16.0;
+        let time_w = 132.0;
+        let value_w = if rect.width() > 690.0 { 108.0 } else { 74.0 };
+        let gap = 12.0;
+        let percent_w = 40.0;
+        let value_right = right_edge - time_w - gap;
+        let progress_right = value_right - value_w - gap;
+        let progress_left = progress_right - percent_w;
+        let metrics_left = progress_left;
         let badge_space = if row.extension.is_empty() { 0.0 } else { 48.0 };
         let max_name = (metrics_left - name_left - 12.0 - badge_space).max(80.0);
         let font = FontId::proportional(13.0);
@@ -1116,28 +1136,11 @@ impl App {
             );
         }
 
-        let right_w = if rect.width() > 690.0 { 108.0 } else { 74.0 };
-        let percent_w = 40.0;
-        let metrics_gap = 8.0;
-        let bar_left = metrics_left + 8.0;
-        let bar_right = (rect.right() - 16.0 - right_w - metrics_gap - percent_w - metrics_gap)
-            .max(bar_left + 32.0);
-        let bar = Rect::from_min_max(
-            pos2(bar_left, rect.center().y - 2.0),
-            pos2(bar_right, rect.center().y + 2.0),
-        );
-        ui.painter()
-            .rect_filled(bar, 2.0, blend(colors.surface, colors.border, 0.9));
+        // Progress as its figure only (the bar was the busy part of the row): 12 % between the
+        // name and the size, right-aligned like the other figures.
         let progress = row.progress();
-        if progress > 0.0 {
-            ui.painter().rect_filled(
-                Rect::from_min_size(bar.min, vec2(bar.width() * progress, bar.height())),
-                2.0,
-                state_color,
-            );
-        }
         ui.painter().text(
-            pos2(bar.right() + metrics_gap + percent_w, rect.center().y),
+            pos2(progress_right, rect.center().y),
             Align2::RIGHT_CENTER,
             crate::i18n::percent(progress.into(), 0),
             FontId::proportional(11.5),
@@ -1150,9 +1153,9 @@ impl App {
         } else {
             row.status_text.clone()
         };
-        let right = winui::ellipsize(ui.painter(), &FontId::proportional(11.5), &right, right_w);
+        let right = winui::ellipsize(ui.painter(), &FontId::proportional(11.5), &right, value_w);
         ui.painter().text(
-            pos2(rect.right() - 16.0, rect.center().y),
+            pos2(value_right, rect.center().y),
             Align2::RIGHT_CENTER,
             right,
             FontId::proportional(11.5),
@@ -1161,6 +1164,19 @@ impl App {
             } else {
                 colors.muted
             },
+        );
+        let completed = winui::ellipsize(
+            ui.painter(),
+            &FontId::proportional(11.5),
+            &row.completed,
+            time_w,
+        );
+        ui.painter().text(
+            pos2(right_edge, rect.center().y),
+            Align2::RIGHT_CENTER,
+            completed,
+            FontId::proportional(11.5),
+            colors.subtle,
         );
 
         if response.clicked() {

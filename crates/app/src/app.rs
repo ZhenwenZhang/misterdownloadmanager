@@ -1933,6 +1933,9 @@ impl App {
                     i.size = Some(st.total);
                     let whole = st.total > 0 && st.done >= st.total;
                     if whole {
+                        if i.status != Status::Complete {
+                            i.completed = Some(model::now_stamp());
+                        }
                         i.status = Status::Complete;
                         if report && i.live.is_none() && stop_after_recheck {
                             let t2 = t.clone();
