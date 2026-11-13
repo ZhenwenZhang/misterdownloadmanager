@@ -253,8 +253,6 @@
 #. button: add a debrid service account (opens the sign-in)
 #. the trailing ... means it opens a window: keep it
 	Add...	Add...
-#. text in macos_main.rs
-	Added	Added
 #. message or event log entry in the main window
 #. event log entry: an RSS download rule added this torrent; {rule} is the rule's name, {feed} the feed's
 	Added by the RSS rule {rule} from {feed}	Added by the RSS rule {rule} from {feed}
@@ -683,7 +681,7 @@
 	Client	Client
 #. text in the Options window
 	Clock:	Clock:
-#. text in macos_main.rs; text in the Checksum window; text in the main window (menus, toolbar, Categories pane); button in crashui.rs; button in a dialog box; button in extension.rs; button in the Help menu's windows (About, updates, shortcuts, Tell a friend); button in helpers.rs; button in the download list; button in the Options window; button in rssdlg.rs; button in torrentfiles.rs; text in standard windows
+#. text in the Checksum window; text in the main window (menus, toolbar, Categories pane); button in crashui.rs; button in a dialog box; button in extension.rs; button in the Help menu's windows (About, updates, shortcuts, Tell a friend); button in helpers.rs; button in the download list; button in the Options window; button in rssdlg.rs; button in torrentfiles.rs; text in standard windows
 #. both verbs: Verify = check the file now; Close = close the window
 #. tooltip of the × that closes the Categories pane
 #. verb: closes this window
@@ -739,8 +737,6 @@
 #. text in the Options window
 #. tab title: connection settings
 	Connection	Connection
-#. text in macos_main.rs
-	Connections	Connections
 #. page title in the Options window
 	Connections and Limits	Connections and Limits
 #. text in the Options window
@@ -861,8 +857,6 @@
 	Description or part of the description	Description or part of the description
 #. text in a download's Properties window
 	Description:	Description:
-#. text in macos_main.rs
-	Details	Details
 #. text in the Options window
 #. column title: a paired phone's or computer's name
 	Device	Device
@@ -975,7 +969,7 @@
 #. RSS feeds window: add the selected article's torrent (opens Add torrent)
 #. the trailing ... means it opens a window: keep it
 	Download...	Download...
-#. text in macos_main.rs; text in a download's progress window
+#. text in a download's progress window
 #. label before the amount received so far
 #. column title: bytes this connection received
 	Downloaded	Downloaded
@@ -1751,8 +1745,6 @@
 #. text in the Add torrent window
 #. where a magnet's peers came from: computers on your own network; {peers} = "3 peers"
 	Local network: {peers}	Local network: {peers}
-#. text in macos_main.rs
-	Location	Location
 #. text in the Batch download window; text in a dialog box; text in a download's Properties window
 #. noun: the user name for the server (an input box follows)
 #. noun: the user name and password section
@@ -2075,7 +2067,7 @@
 #. text in countries.rs
 #. a country's name (where a download's server is)
 	Niue	Niue
-#. text in macos_main.rs; button in a dialog box; text in a download's progress window
+#. button in a dialog box; text in a download's progress window
 	No	No
 #. text in a dialog box
 	No addresses yet	No addresses yet
@@ -2597,8 +2589,6 @@
 #. text in a download's Properties window
 #. {result} = how the last attempt ended (a status or an error message)
 	Result: {result}	Result: {result}
-#. text in macos_main.rs
-	Resumable	Resumable
 #. text in macos_main.rs; text in a download's progress window
 #. verb: continue the download
 	Resume	Resume
@@ -2920,8 +2910,6 @@
 #. the kind of file the Open dialog lists (sound files)
 #. tab title: sound settings
 	Sounds	Sounds
-#. text in macos_main.rs
-	Source	Source
 #. link (opens a web page) in the Help menu's windows (About, updates, shortcuts, Tell a friend)
 	Source code	Source code
 #. text in the Link grabber window
@@ -2943,8 +2931,6 @@
 #. text in countries.rs
 #. a country's name (where a download's server is)
 	Spain	Spain
-#. text in macos_main.rs
-	Speed	Speed
 #. text in macos_main.rs; text in a download's progress window; text in the tray icon's menu
 #. tab title: the tool that limits the download speed
 	Speed Limiter	Speed Limiter
@@ -3467,7 +3453,7 @@
 #. text in the Scheduler window
 #. tooltip on the Scheduler's "Wake the computer to run this queue" while "Start download at" is off
 	Tick "Start download at" first: the computer is woken for the start time	Tick "Start download at" first: the computer is woken for the start time
-#. text in macos_main.rs; text in a download's progress window; text in the Scheduler window
+#. text in a download's progress window; text in the Scheduler window
 	Time left	Time left
 #. text in countries.rs
 #. a country's name (where a download's server is)
@@ -3860,7 +3846,7 @@
 #. text in countries.rs
 #. a country's name (where a download's server is)
 	Yemen	Yemen
-#. text in macos_main.rs; button in a dialog box; text in a download's progress window
+#. button in a dialog box; text in a download's progress window
 	Yes	Yes
 #. button in helpers.rs
 #. the first start's helpers window: download yt-dlp and ffmpeg (the recommended answer)
@@ -3960,7 +3946,7 @@
 #. text in the Options window
 #. Options → Remote → Pair a device: done; {device} = the name it was given
 	{device} is paired. It can control MDM now.	{device} is paired. It can control MDM now.
-#. text in macos_main.rs; text in remote.rs
+#. text in remote.rs
 #. remote control page (on a phone): progress; {done} and {size} are sizes ("1.2 MB of 7.5 MB")
 #. {size} = a file size such as "4.2 MB" (keep the braces as they are)
 	{done} of {size}	{done} of {size}
@@ -4037,9 +4023,6 @@
 #. a number of connections the app learned by itself for a server
 #. {n} = a number (keep the braces as they are)
 	{n} (auto)	{n} (auto)
-#. text in macos_main.rs
-#. {n} = a number (keep the braces as they are)
-	{n} active	{n} active
 #. text in playlistdlg.rs
 #. in Download video for a playlist: how many videos are ticked, of how many
 #. {n} = a number (keep the braces as they are)

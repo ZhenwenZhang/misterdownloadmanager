@@ -19,9 +19,7 @@ use crate::{chrome, winui};
 
 const SIDEBAR_W: f32 = 238.0;
 const HEADER_H: f32 = 58.0;
-const INSPECTOR_W: f32 = 326.0;
 /// Below the width that fits a third pane the inspector narrows instead of going away (#A11).
-const INSPECTOR_NARROW_W: f32 = 268.0;
 const ROW_H: f32 = 60.0;
 const GROUP_H: f32 = 30.0;
 /// The status bar along the bottom of the content area (#A7).
@@ -43,7 +41,6 @@ struct MacColors {
     window: Color32,
     sidebar: Color32,
     surface: Color32,
-    inspector: Color32,
     border: Color32,
     text: Color32,
     muted: Color32,
@@ -76,7 +73,6 @@ impl MacColors {
                 window: Color32::from_rgb(0x10, 0x10, 0x12),
                 sidebar: Color32::from_rgb(0x0c, 0x0c, 0x0e),
                 surface: Color32::from_rgb(0x12, 0x12, 0x14),
-                inspector: Color32::from_rgb(0x11, 0x11, 0x13),
                 border: Color32::from_rgb(0x2a, 0x2a, 0x2d),
                 text: Color32::from_rgb(0xf5, 0xf5, 0xf7),
                 muted: Color32::from_rgb(0x9a, 0x9a, 0xa1),
@@ -93,7 +89,6 @@ impl MacColors {
                 window: Color32::WHITE,
                 sidebar: Color32::from_rgb(0xee, 0xee, 0xf1),
                 surface: Color32::WHITE,
-                inspector: Color32::from_rgb(0xfc, 0xfc, 0xfd),
                 border: Color32::from_rgb(0xe1, 0xe1, 0xe5),
                 text: Color32::from_rgb(0x1d, 0x1d, 0x1f),
                 muted: Color32::from_rgb(0x6e, 0x6e, 0x73),
@@ -116,20 +111,12 @@ struct MacRow {
     extension: String,
     status: Status,
     status_text: String,
-    category: String,
-    category_kind: Category,
     downloaded: u64,
     size: Option<u64>,
     speed: f64,
-    time_left: String,
     error: String,
-    dest: String,
-    source: String,
-    resumable: String,
-    added: String,
     /// When it finished ("Completed" column), already in the list's date format; "-" otherwise.
     completed: String,
-    active_connections: usize,
 }
 
 impl MacRow {
@@ -142,37 +129,16 @@ impl MacRow {
             .take(5)
             .collect::<String>()
             .to_uppercase();
-        let category = item.category.label();
-        let category = crate::i18n::t(category.as_ref()).to_owned();
-        let source = item
-            .url
-            .host_str()
-            .map_or_else(|| item.url.as_str().to_owned(), str::to_owned);
-        let active_connections = item.snap.as_ref().map_or(0, |snap| snap.connections.len());
         Self {
             id: item.id,
             name: item.file_name.clone(),
-            category_kind: item.category,
             extension,
             status: item.status,
             status_text: item.status_text(),
-            category,
             downloaded: item.downloaded,
             size: item.size,
             speed: item.rate(),
-            time_left: item.time_left(),
             error: item.error.clone().unwrap_or_default(),
-            dest: item.dest.to_string_lossy().into_owned(),
-            source,
-            resumable: match item.resumable {
-                Some(true) => crate::i18n::t("Yes").to_owned(),
-                Some(false) => crate::i18n::t("No").to_owned(),
-                None => "-".to_owned(),
-            },
-            added: item
-                .added
-                .as_deref()
-                .map_or_else(|| "-".to_owned(), model::date_text),
             completed: if item.status == Status::Complete {
                 item.completed
                     .as_deref()
@@ -180,7 +146,6 @@ impl MacRow {
             } else {
                 "-".to_owned()
             },
-            active_connections,
         }
     }
 
@@ -224,18 +189,11 @@ impl App {
             Stroke::new(1.0, colors.border),
         );
 
-        let show_inspector = !self.mac_inspector_hidden && self.selection.one().is_some();
-        let inspector_w = if show_inspector {
-            if full.width() >= 980.0 {
-                INSPECTOR_W
-            } else {
-                INSPECTOR_NARROW_W.min(full.width() * 0.34)
-            }
-        } else {
-            0.0
-        };
+        // The list spans the whole content area: the details panel that used to open on the
+        // right for the selected row is gone (Properties, on the context menu and on a double
+        // click, shows the same facts in a window of its own).
         let content_left = sidebar.right();
-        let content_right = full.right() - inspector_w;
+        let content_right = full.right();
         let header = Rect::from_min_max(
             pos2(content_left, full.top()),
             pos2(content_right, full.top() + HEADER_H),
@@ -254,11 +212,6 @@ impl App {
         self.paint_macos_header(ui, header, colors, &rows, &mut chosen);
         self.paint_macos_list(ui, list_rect, colors, &rows, &mut chosen);
         self.paint_macos_status(ui, status, colors, rows.len());
-
-        if show_inspector {
-            let inspector = Rect::from_min_max(pos2(content_right, full.top()), full.max);
-            self.paint_macos_inspector(ui, inspector, colors);
-        }
 
         if let Some(choice) = self.paint_macos_popup(&ctx) {
             chosen = Some(choice);
@@ -378,7 +331,6 @@ impl App {
         {
             self.view = View::All;
             self.mac_failed_only = false;
-            self.mac_inspector_hidden = false;
         }
         if nav_row(
             &mut side,
@@ -392,7 +344,6 @@ impl App {
         {
             self.view = View::Unfinished(None);
             self.mac_failed_only = false;
-            self.mac_inspector_hidden = false;
         }
         if nav_row(
             &mut side,
@@ -406,7 +357,6 @@ impl App {
         {
             self.view = View::Finished(None);
             self.mac_failed_only = false;
-            self.mac_inspector_hidden = false;
         }
         if nav_row(
             &mut side,
@@ -420,7 +370,6 @@ impl App {
         {
             self.view = View::Unfinished(None);
             self.mac_failed_only = true;
-            self.mac_inspector_hidden = false;
         }
 
         side.add_space(18.0);
@@ -487,7 +436,6 @@ impl App {
                         {
                             self.view = View::Cat(category);
                             self.mac_failed_only = false;
-                            self.mac_inspector_hidden = false;
                         }
                     }
                 });
@@ -1192,7 +1140,6 @@ impl App {
                 crate::selection::Pick::Only(index)
             };
             self.selection.apply(pick, ids);
-            self.mac_inspector_hidden = false;
         }
         if response.double_clicked() {
             if row.status == Status::Complete && !self.settings.double_click_open {
@@ -1294,212 +1241,6 @@ impl App {
         if response.clicked() {
             *chosen = Some((Cmd::AddUrl, None));
         }
-    }
-
-    fn paint_macos_inspector(&mut self, ui: &mut Ui, rect: Rect, colors: MacColors) {
-        let Some(item) = self.selected_item().map(MacRow::from_item) else {
-            return;
-        };
-        let p = ui.painter();
-        p.rect_filled(rect, 0.0, colors.inspector);
-        p.line_segment(
-            [
-                pos2(rect.left(), rect.top()),
-                pos2(rect.left(), rect.bottom()),
-            ],
-            Stroke::new(1.0, colors.border),
-        );
-        let inner = rect.shrink2(vec2(24.0, 20.0));
-        let close = Rect::from_center_size(
-            pos2(inner.right() - 2.0, inner.top() + 8.0),
-            vec2(28.0, 28.0),
-        );
-        let close_response = ui.interact(
-            close,
-            egui::Id::unique("mac-inspector-close"),
-            winui::pointer_only(),
-        );
-        close_response.widget_info(|| {
-            egui::WidgetInfo::labeled(egui::Role::Button, true, crate::i18n::t("Close"))
-        });
-        if close_response.hovered() {
-            p.circle_filled(close.center(), 13.0, colors.hover);
-        }
-        p.line_segment(
-            [
-                close.center() + vec2(-4.0, -4.0),
-                close.center() + vec2(4.0, 4.0),
-            ],
-            Stroke::new(1.4, colors.muted),
-        );
-        p.line_segment(
-            [
-                close.center() + vec2(4.0, -4.0),
-                close.center() + vec2(-4.0, 4.0),
-            ],
-            Stroke::new(1.4, colors.muted),
-        );
-        if close_response.clicked() {
-            self.mac_inspector_hidden = true;
-        }
-
-        let state_color = status_color(item.status, colors);
-        let cube = Rect::from_min_size(inner.min, vec2(38.0, 38.0));
-        let category = category_colors()
-            .into_iter()
-            .find(|(known, _)| *known == item.category_kind)
-            .map_or(colors.subtle, |(_, color)| color);
-        p.rect_filled(cube, 9.0, blend(colors.inspector, category, 0.16));
-        p.rect_stroke(
-            cube,
-            9.0,
-            Stroke::new(1.0, blend(colors.inspector, category, 0.35)),
-            StrokeKind::Inside,
-        );
-        paint_category_icon(
-            p,
-            cube.center() + vec2(0.0, 0.5),
-            item.category_kind,
-            category,
-        );
-        let name = winui::ellipsize(
-            p,
-            &FontId::proportional(15.0),
-            &item.name,
-            inner.width() - 86.0,
-        );
-        p.text(
-            pos2(cube.right() + 14.0, cube.top() + 2.0),
-            Align2::LEFT_TOP,
-            name,
-            FontId::proportional(15.0),
-            colors.text,
-        );
-        p.circle_filled(
-            pos2(cube.right() + 18.0, cube.bottom() - 2.0),
-            3.5,
-            state_color,
-        );
-        let status = format!("{} · {} · {}", item.status_text, item.category, item.source);
-        let status = winui::ellipsize(
-            p,
-            &FontId::proportional(11.5),
-            &status,
-            inner.width() - 64.0,
-        );
-        p.text(
-            pos2(cube.right() + 28.0, cube.bottom() - 2.0),
-            Align2::LEFT_CENTER,
-            status,
-            FontId::proportional(11.5),
-            colors.muted,
-        );
-
-        let mut y = inner.top() + 82.0;
-        section_title(
-            p,
-            inner,
-            y,
-            "Progress",
-            crate::i18n::percent(item.progress().into(), 0),
-            colors,
-        );
-        y += 28.0;
-        let bar = Rect::from_min_size(pos2(inner.left(), y), vec2(inner.width(), 6.0));
-        p.rect_filled(bar, 3.0, colors.border);
-        p.rect_filled(
-            Rect::from_min_size(bar.min, vec2(bar.width() * item.progress(), bar.height())),
-            3.0,
-            state_color,
-        );
-        y += 25.0;
-        inspector_row(
-            p,
-            inner,
-            y,
-            "Downloaded",
-            crate::i18n::fmt(
-                crate::i18n::t("{done} of {size}"),
-                &[
-                    ("done", &model::size_list(item.downloaded)),
-                    (
-                        "size",
-                        &item.size.map_or_else(|| "-".to_owned(), model::size_list),
-                    ),
-                ],
-            ),
-            colors,
-        );
-        y += 34.0;
-        inspector_row(p, inner, y, "Speed", model::rate(item.speed), colors);
-        y += 34.0;
-        inspector_row(
-            p,
-            inner,
-            y,
-            "Time left",
-            if item.time_left.is_empty() {
-                "-".to_owned()
-            } else {
-                item.time_left.clone()
-            },
-            colors,
-        );
-        // A finished download has nothing to show here; eight empty slots read as a loading
-        // skeleton, so the band only appears while connections are open.
-        if item.active_connections > 0 {
-            y += 52.0;
-            section_title(
-                p,
-                inner,
-                y,
-                "Connections",
-                crate::i18n::fmt(
-                    crate::i18n::t("{n} active"),
-                    &[("n", &crate::i18n::integer(item.active_connections as u64))],
-                ),
-                colors,
-            );
-            y += 28.0;
-            let segments = item.active_connections.clamp(1, 8);
-            let gap = 5.0;
-            let width = (inner.width() - gap * 7.0) / 8.0;
-            for i in 0..8 {
-                let segment = Rect::from_min_size(
-                    pos2(inner.left() + i as f32 * (width + gap), y),
-                    vec2(width, 8.0),
-                );
-                p.rect_filled(segment, 3.0, colors.border);
-                if i < segments {
-                    p.rect_filled(
-                        Rect::from_min_size(
-                            segment.min,
-                            vec2(segment.width() * 0.62, segment.height()),
-                        ),
-                        3.0,
-                        colors.accent,
-                    );
-                }
-            }
-            y += 58.0;
-        } else {
-            y += 30.0;
-        }
-        p.text(
-            pos2(inner.left(), y),
-            Align2::LEFT_TOP,
-            crate::i18n::t("Details"),
-            FontId::proportional(12.0),
-            colors.muted,
-        );
-        y += 31.0;
-        detail_row(p, inner, y, "Location", &item.dest, colors);
-        y += 38.0;
-        detail_row(p, inner, y, "Source", &item.source, colors);
-        y += 38.0;
-        detail_row(p, inner, y, "Resumable", &item.resumable, colors);
-        y += 38.0;
-        detail_row(p, inner, y, "Added", &item.added, colors);
     }
 
     fn macos_rows(&self) -> Vec<MacRow> {
@@ -2128,79 +1869,4 @@ fn category_colors() -> Vec<(Category, Color32)> {
         .enumerate()
         .map(|(index, category)| (category, colors[index % colors.len()]))
         .collect()
-}
-
-fn section_title(
-    p: &egui::Painter,
-    rect: Rect,
-    y: f32,
-    label: &str,
-    value: String,
-    colors: MacColors,
-) {
-    p.text(
-        pos2(rect.left(), y),
-        Align2::LEFT_TOP,
-        crate::i18n::t(label),
-        FontId::proportional(11.0),
-        colors.subtle,
-    );
-    p.text(
-        pos2(rect.right(), y),
-        Align2::RIGHT_TOP,
-        value,
-        FontId::proportional(12.0),
-        colors.text,
-    );
-}
-
-fn inspector_row(
-    p: &egui::Painter,
-    rect: Rect,
-    y: f32,
-    label: &str,
-    value: String,
-    colors: MacColors,
-) {
-    p.line_segment(
-        [pos2(rect.left(), y + 25.0), pos2(rect.right(), y + 25.0)],
-        Stroke::new(1.0, blend(colors.inspector, colors.border, 0.75)),
-    );
-    let value = winui::ellipsize(p, &FontId::proportional(12.0), &value, rect.width() - 102.0);
-    p.text(
-        pos2(rect.left(), y),
-        Align2::LEFT_TOP,
-        crate::i18n::t(label),
-        FontId::proportional(11.0),
-        colors.subtle,
-    );
-    p.text(
-        pos2(rect.left() + 102.0, y),
-        Align2::LEFT_TOP,
-        value,
-        FontId::proportional(12.0),
-        colors.text,
-    );
-}
-
-fn detail_row(p: &egui::Painter, rect: Rect, y: f32, label: &str, value: &str, colors: MacColors) {
-    p.line_segment(
-        [pos2(rect.left(), y + 27.0), pos2(rect.right(), y + 27.0)],
-        Stroke::new(1.0, colors.border),
-    );
-    p.text(
-        pos2(rect.left(), y),
-        Align2::LEFT_TOP,
-        crate::i18n::t(label),
-        FontId::proportional(11.5),
-        colors.muted,
-    );
-    let value = winui::ellipsize(p, &FontId::proportional(11.5), value, rect.width() - 104.0);
-    p.text(
-        pos2(rect.left() + 104.0, y),
-        Align2::LEFT_TOP,
-        value,
-        FontId::proportional(11.5),
-        colors.text,
-    );
 }

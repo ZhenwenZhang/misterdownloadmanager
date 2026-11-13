@@ -686,8 +686,6 @@ pub struct App {
     #[cfg(target_os = "macos")]
     mac_failed_only: bool,
     #[cfg(target_os = "macos")]
-    mac_inspector_hidden: bool,
-    #[cfg(target_os = "macos")]
     mac_speed_history: Vec<f64>,
     #[cfg(target_os = "macos")]
     mac_speed_sampled: Instant,
@@ -1233,8 +1231,6 @@ impl App {
             mac_search: String::new(),
             #[cfg(target_os = "macos")]
             mac_failed_only: false,
-            #[cfg(target_os = "macos")]
-            mac_inspector_hidden: false,
             #[cfg(target_os = "macos")]
             mac_speed_history: vec![0.0; 24],
             #[cfg(target_os = "macos")]
