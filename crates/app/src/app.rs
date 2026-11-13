@@ -7426,7 +7426,7 @@ impl App {
     /// measures the window at the old size in the frame a new one applies. False in that frame.
     fn follow_zoom(&mut self, ctx: &egui::Context) -> bool {
         #[cfg(target_os = "macos")]
-        const MIN: egui::Vec2 = egui::vec2(900.0, 560.0);
+        const MIN: egui::Vec2 = egui::vec2(680.0, 460.0);
         #[cfg(not(target_os = "macos"))]
         const MIN: egui::Vec2 = egui::vec2(600.0, 300.0);
         crate::scale::keys(ctx);

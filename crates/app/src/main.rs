@@ -366,7 +366,9 @@ fn app() -> eframe::Result {
         .filter(|_| scale::test_zoom().is_none() && !offscreen())
         .filter(|[x, y, w, h]| *w >= 600 && *h >= 300 && on_a_screen(x + 40, y + 10));
     #[cfg(target_os = "macos")]
-    let (default_size, min_size) = ([1180.0 * z, 720.0 * z], [900.0 * z, 560.0 * z]);
+    // The sidebar and the icon toolbar need less than IDM's panes did: 900 points wide kept a
+    // window from being made narrow, which macOS users do a lot (side by side with a browser).
+    let (default_size, min_size) = ([1180.0 * z, 720.0 * z], [680.0 * z, 460.0 * z]);
     #[cfg(not(target_os = "macos"))]
     let (default_size, min_size) = ([930.0 * z, 470.0 * z], [600.0 * z, 300.0 * z]);
     let size = saved.map_or(default_size, |[_, _, w, h]| [w as f32, h as f32]);
