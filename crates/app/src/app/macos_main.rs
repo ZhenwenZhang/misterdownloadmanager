@@ -611,16 +611,15 @@ impl App {
             chart_painter.add(egui::Shape::mesh(mesh));
             chart_painter.add(egui::Shape::line(points, Stroke::new(1.6, colors.accent)));
         } else {
-            // No traffic: an empty chart keeps its foot, and "Idle" sits at the card's top
-            // right, on the figure's baseline (aligned with the rate it belongs to) rather
-            // than in the middle of the plot area.
+            // No traffic: an empty chart keeps its foot, and "Idle" shares the label's line at
+            // the card's top right (where the activity dot sits while downloads run).
             p.line_segment(
                 [chart.left_bottom(), chart.right_bottom()],
                 Stroke::new(1.0, blend(colors.sidebar, colors.border, 0.7)),
             );
             p.text(
-                pos2(right, base),
-                Align2::RIGHT_BOTTOM,
+                pos2(right, rect.top() + 11.0),
+                Align2::RIGHT_CENTER,
                 // i18n: the sidebar speed chart while nothing is downloading
                 crate::i18n::t("Idle"),
                 FontId::proportional(11.0),
