@@ -146,7 +146,12 @@ jobs:
         if: steps.sync.outputs.merged == 'yes' && steps.released.outputs.skip == 'no'
         run: |
           set -euo pipefail
-          git push origin macos/native-shell
+          # Only a merged upstream is pushed; a run told to skip the merge builds what the
+          # branch already has. Someone pushing meanwhile must not fail the release either.
+          if [ "$(git rev-parse HEAD)" != "${GITHUB_SHA}" ]; then
+            git push origin HEAD:macos/native-shell \
+              || echo "::warning::the branch moved while this ran; publishing this commit anyway"
+          fi
           day="$(date +%F)"
           tag="macos-$day"
           n=2
@@ -175,7 +180,7 @@ jobs:
           gh release create "$tag" "/tmp/$dmg" "/tmp/SHA256SUMS-macos.txt" "/tmp/$symbols" \
             --title "macOS native build $day (Apple Silicon)" \
             --notes-file /tmp/notes.md \
-            --target macos/native-shell \
+            --target "$(git rev-parse HEAD)" \
             --latest
 
       - name: Report a failure in the run summary (and as an issue when allowed)
