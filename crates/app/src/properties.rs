@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use egui::{Pos2, Ui, vec2};
 
 use crate::chrome::{IconKey, ShellIcons};
-use crate::dialogs::{Outcome, window};
+use crate::dialogs::{Outcome, window_raw};
 use crate::model::{Item, Status};
 use crate::winui::{self, ButtonKind, LIGHT_BG, LIGHT_TEXT, r, text};
 
@@ -70,7 +70,7 @@ impl Properties {
     ) -> Outcome<Changes> {
         let mac = winui::mac_look();
         let size = if mac { [520.0, 500.0] } else { [477.0, 420.0] };
-        let outcome = window(
+        let outcome = window_raw(
             ctx,
             &format!("properties-{}", self.id),
             "File Properties",

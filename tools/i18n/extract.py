@@ -50,6 +50,8 @@ SINKS = {
     "button": (2, ""), "button_light": (2, ""), "checkbox": (3, ""), "checkbox_until": (3, ""),
     "checkbox_light": (3, ""), "checkbox_light_until": (3, ""), "radio_light_until": (3, ""),
     "radio_light": (3, ""), "window": (2, ""), "question": (2, ""), "notice": (2, ""), "row": (1, ""), "t": (0, ""), "tc": (1, None),
+    # The same windows with their layout keeping its own margins (dialogs.rs, macOS).
+    "window_raw": (2, ""), "question_raw": (2, ""),
     "tn": (1, "@plural"), "mark": (0, ""), "branch": (0, ""),
     "Item": (0, "menu"), "I": (0, "menu"), "Radio": (0, "menu"), "Sub": (0, "menu"),
     "off": (0, "menu"), "by": (0, "menu"), "link": (4, ""),
@@ -91,6 +93,7 @@ ROLES = {
     "checkbox_light": "checkbox", "checkbox_light_until": "checkbox", "checkbox_until": "checkbox",
     "radio_light": "option (radio button)", "radio_light_until": "option (radio button)",
     "window": "window title", "question": "window title", "notice": "window title", "row": "item in the Categories tree",
+    "window_raw": "window title", "question_raw": "window title",
     "branch": "item in the Categories tree", "Item": "menu command", "I": "menu command",
     "Radio": "menu choice", "Sub": "submenu", "off": "menu command", "by": "menu choice",
     "tn": "count", "link": "link (opens a web page)", "header": "page title",

@@ -4,7 +4,7 @@
 
 use egui::{Pos2, Rect, Sense, Ui, pos2, vec2};
 
-use crate::dialogs::{Outcome, window};
+use crate::dialogs::{Outcome, window, window_raw};
 use crate::icons::Icon;
 use crate::model::Category;
 use crate::regional::DateOrder;
@@ -306,7 +306,7 @@ impl OptionsDialog {
         let mac = winui::mac_look();
         let bar = if mac { 150.0 } else { 0.0 };
         let client = [430.0 + bar, 506.0];
-        let outcome = window(
+        let outcome = window_raw(
             ctx,
             "options",
             "Mister Download Manager Configuration",

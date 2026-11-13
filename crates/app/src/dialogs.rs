@@ -232,8 +232,19 @@ fn keep_on_screen(ctx: &egui::Context, key: egui::Id, title: &str) {
     ctx.request_repaint_after(std::time::Duration::from_millis(500));
 }
 
+/// The margin macOS dialogs keep around their layout (AppKit panels sit 20 points in from the
+/// window's edges). Windows dialogs are laid out edge to edge, as the theme's metrics measure
+/// them; 0 there.
+pub(crate) fn pad() -> f32 {
+    if crate::winui::mac_look() { 20.0 } else { 0.0 }
+}
+
 /// A fixed-size dialog window whose client area is exactly `client` pixels; `body` gets the
 /// client origin and paints at absolute spec coordinates.
+///
+/// On macOS the window is [`pad`] points larger each way and `body` is moved that far in, so a
+/// layout written edge to edge as Windows has it keeps a macOS margin. Windows and Linux: the
+/// client is exactly `client`, as before.
 pub(crate) fn window<T>(
     ctx: &egui::Context,
     id: &str,
@@ -243,7 +254,41 @@ pub(crate) fn window<T>(
     bg: egui::Color32,
     body: impl FnMut(&mut Ui, Pos2) -> Outcome<T>,
 ) -> Outcome<T> {
-    dialog_window(ctx, id, title, client, minimize, bg, Kind::Plain, body)
+    dialog_window(
+        ctx,
+        id,
+        title,
+        client,
+        minimize,
+        bg,
+        Kind::Plain,
+        true,
+        body,
+    )
+}
+
+/// A `window` whose layout keeps its own margins (the macOS layouts of this fork: Options,
+/// Add URL, Properties, the progress window and the torrent windows): no [`pad`] is added.
+pub(crate) fn window_raw<T>(
+    ctx: &egui::Context,
+    id: &str,
+    title: &str,
+    client: [f32; 2],
+    minimize: bool,
+    bg: egui::Color32,
+    body: impl FnMut(&mut Ui, Pos2) -> Outcome<T>,
+) -> Outcome<T> {
+    dialog_window(
+        ctx,
+        id,
+        title,
+        client,
+        minimize,
+        bg,
+        Kind::Plain,
+        false,
+        body,
+    )
 }
 
 /// A question that must be answered (Yes / No, a countdown): a `window` that stays above the
@@ -259,7 +304,40 @@ pub(crate) fn question<T>(
     bg: egui::Color32,
     body: impl FnMut(&mut Ui, Pos2) -> Outcome<T>,
 ) -> Outcome<T> {
-    dialog_window(ctx, id, title, client, minimize, bg, Kind::Question, body)
+    dialog_window(
+        ctx,
+        id,
+        title,
+        client,
+        minimize,
+        bg,
+        Kind::Question,
+        true,
+        body,
+    )
+}
+
+/// A `question` whose layout keeps its own margins (the macOS delete confirmation).
+pub(crate) fn question_raw<T>(
+    ctx: &egui::Context,
+    id: &str,
+    title: &str,
+    client: [f32; 2],
+    minimize: bool,
+    bg: egui::Color32,
+    body: impl FnMut(&mut Ui, Pos2) -> Outcome<T>,
+) -> Outcome<T> {
+    dialog_window(
+        ctx,
+        id,
+        title,
+        client,
+        minimize,
+        bg,
+        Kind::Question,
+        false,
+        body,
+    )
 }
 
 /// News that must not go unseen (Download complete, as IDM shows it): a `window` shown above
@@ -284,6 +362,7 @@ pub(crate) fn notice<T>(
         minimize,
         bg,
         Kind::Notice { on_top },
+        true,
         body,
     )
 }
@@ -330,9 +409,14 @@ fn dialog_window<T>(
     minimize: bool,
     bg: egui::Color32,
     kind: Kind,
+    padded: bool,
     mut body: impl FnMut(&mut Ui, Pos2) -> Outcome<T>,
 ) -> Outcome<T> {
     DIALOG_OPEN.with(|open| open.set(true));
+    // The macOS margin ([`pad`]): the window grows by it on each side, the layout moves in by
+    // it. A layout that keeps its own margins asks for none (window_raw).
+    let margin = if padded { pad() } else { 0.0 };
+    let client = [client[0] + 2.0 * margin, client[1] + 2.0 * margin];
     let modal = kind == Kind::Question;
     let key = egui::Id::unique(("dialog-pos", id));
     // The title in the interface language (Win32 finds the window by it, so it is used as is
@@ -417,8 +501,16 @@ fn dialog_window<T>(
                 );
                 let mut rest = ui.new_child(egui::UiBuilder::new().max_rect(below));
                 let out = scroll(&mut rest, key, client, |ui, o| {
-                    let _surface = winui::Surface::enter(o.x, o.x + client[0]);
-                    body(ui, o)
+                    let inner_size = vec2(
+                        (client[0] - 2.0 * margin).max(1.0),
+                        (client[1] - 2.0 * margin).max(1.0),
+                    );
+                    let content =
+                        egui::Rect::from_min_size(o + egui::vec2(margin, margin), inner_size);
+                    let mut inset = ui.new_child(egui::UiBuilder::new().max_rect(content));
+                    inset.set_clip_rect(ui.clip_rect());
+                    let _surface = winui::Surface::enter(content.min.x, content.max.x);
+                    body(&mut inset, content.min)
                 });
                 if caption_close { Outcome::Closed } else { out }
             })
@@ -640,242 +732,256 @@ impl AddUrl {
     pub fn show(&mut self, ctx: &egui::Context) -> Outcome<NewUrl> {
         let mac = cfg!(target_os = "macos");
         let client = if mac { [520.0, 190.0] } else { [560.0, 93.0] };
-        window(
-            ctx,
-            "add-url",
-            "Enter new address to download",
-            client,
-            false,
-            winui::BG(),
-            |ui, o| {
-                let p = ui.painter().clone();
-                // i18n: noun: the web address (URL)
-                let title = crate::i18n::t("Address");
+        // The macOS layout keeps its own margins (window_raw): no pad is added.
+        let body = |ui: &mut Ui, o: Pos2| {
+            let p = ui.painter().clone();
+            // i18n: noun: the web address (URL)
+            let title = crate::i18n::t("Address");
+            if mac {
+                winui::text(&p, o.x + 20.0, o.y + 26.0, title, winui::TEXT());
+            } else {
+                winui::text(&p, o.x + 12.0, o.y + 25.0, title, winui::TEXT());
+            }
+            let addr_rc = if mac {
+                r(o, 20.0, 34.0, 480.0, 24.0)
+            } else {
+                r(o, 68.0, 11.0, 396.0, 21.0)
+            };
+            let addr = winui::combo_edit(ui, addr_rc, &mut self.address);
+            // An error about the address goes once it is edited.
+            if addr.changed() {
+                self.error = None;
+            }
+            if ui.memory(|m| m.focused().is_none()) {
+                addr.request_focus();
+            }
+            // The arrow: the addresses entered before.
+            if winui::combo_arrow(ui, addr_rc, "add-url", self.list_open).clicked()
+                || winui::combo_keys(ui, &addr)
+            {
+                self.list_open = !self.list_open;
+            }
+            // Up / Down step through the addresses entered before.
+            let at = self.history.iter().position(|h| *h == self.address.trim());
+            if !self.list_open
+                && let Some(i) = winui::history_keys(ui, &addr, self.history.len(), at)
+            {
+                self.address = self.history[i].clone();
+                self.error = None;
+            }
+            // While its list is open, Escape closes the list and the box keeps the keys.
+            winui::keep_keys(ui, &addr, false, true, self.list_open);
+            let list_was_open = self.list_open;
+            if self.list_open
+                && let Some(i) = winui::drop_list(
+                    ui,
+                    "add-url-history",
+                    addr_rc,
+                    &self.history,
+                    crate::i18n::t("No addresses yet"),
+                    &mut self.list_open,
+                )
+            {
+                self.address = self.history[i].clone();
+                addr.request_focus();
+            }
+            // Enter presses the default button (OK), as in IDM, wherever the focus is.
+            let _ = &addr;
+            let enter = winui::enter_pressed(ui);
+            let label = if self.auth {
+                winui::TEXT()
+            } else {
+                winui::TEXT_DISABLED()
+            };
+            let (ok, cancel) = if mac {
+                winui::checkbox(
+                    ui,
+                    o + vec2(20.0, 72.0),
+                    &mut self.auth,
+                    "Use authorization",
+                    true,
+                );
+                // i18n: noun: the user name and password section
+                winui::text(&p, o.x + 20.0, o.y + 112.0, crate::i18n::t("Login"), label);
+                winui::edit(
+                    ui,
+                    r(o, 76.0, 97.0, 180.0, 24.0),
+                    &mut self.login,
+                    self.auth,
+                    false,
+                );
+                winui::text(
+                    &p,
+                    o.x + 276.0,
+                    o.y + 112.0,
+                    crate::i18n::t("Password"),
+                    label,
+                );
+                winui::edit(
+                    ui,
+                    r(o, 344.0, 97.0, 156.0, 24.0),
+                    &mut self.password,
+                    self.auth,
+                    true,
+                );
+                let cancel = winui::button(
+                    ui,
+                    r(o, 306.0, 146.0, 92.0, 24.0),
+                    "Cancel",
+                    ButtonKind::Normal,
+                    false,
+                    None,
+                )
+                .clicked();
+                let ok = winui::button(
+                    ui,
+                    r(o, 408.0, 146.0, 92.0, 24.0),
+                    "OK",
+                    ButtonKind::Default,
+                    false,
+                    None,
+                )
+                .clicked();
+                (ok, cancel)
+            } else {
+                winui::group_box(
+                    &p,
+                    r(o, 11.0, 45.0, 453.0, 40.0),
+                    Some(winui::caption_gap(
+                        &p,
+                        o.x + 20.0,
+                        o.x + 124.0,
+                        "Use authorization",
+                        false,
+                    )),
+                );
+                winui::checkbox(
+                    ui,
+                    o + vec2(20.0, 39.0),
+                    &mut self.auth,
+                    "Use authorization",
+                    true,
+                );
+                winui::text(&p, o.x + 84.0, o.y + 69.0, crate::i18n::t("Login"), label);
+                winui::edit(
+                    ui,
+                    r(o, 116.0, 55.0, 117.0, 23.0),
+                    &mut self.login,
+                    self.auth,
+                    false,
+                );
+                winui::text(
+                    &p,
+                    o.x + 289.0,
+                    o.y + 69.0,
+                    crate::i18n::t("Password"),
+                    label,
+                );
+                winui::edit(
+                    ui,
+                    r(o, 342.0, 55.0, 113.0, 23.0),
+                    &mut self.password,
+                    self.auth,
+                    true,
+                );
+                let ok = winui::button(
+                    ui,
+                    r(o, 475.0, 12.0, 79.0, 19.0),
+                    "OK",
+                    ButtonKind::Default,
+                    false,
+                    None,
+                )
+                .clicked();
+                let cancel = winui::button(
+                    ui,
+                    r(o, 475.0, 40.0, 79.0, 21.0),
+                    "Cancel",
+                    ButtonKind::Normal,
+                    false,
+                    None,
+                )
+                .clicked();
+                (ok, cancel)
+            };
+            if let Some(e) = &self.error {
+                let red = winui::ERROR();
                 if mac {
-                    winui::text(&p, o.x + 20.0, o.y + 26.0, title, winui::TEXT());
-                } else {
-                    winui::text(&p, o.x + 12.0, o.y + 25.0, title, winui::TEXT());
-                }
-                let addr_rc = if mac {
-                    r(o, 20.0, 34.0, 480.0, 24.0)
-                } else {
-                    r(o, 68.0, 11.0, 396.0, 21.0)
-                };
-                let addr = winui::combo_edit(ui, addr_rc, &mut self.address);
-                // An error about the address goes once it is edited.
-                if addr.changed() {
-                    self.error = None;
-                }
-                if ui.memory(|m| m.focused().is_none()) {
-                    addr.request_focus();
-                }
-                // The arrow: the addresses entered before.
-                if winui::combo_arrow(ui, addr_rc, "add-url", self.list_open).clicked()
-                    || winui::combo_keys(ui, &addr)
-                {
-                    self.list_open = !self.list_open;
-                }
-                // Up / Down step through the addresses entered before.
-                let at = self.history.iter().position(|h| *h == self.address.trim());
-                if !self.list_open
-                    && let Some(i) = winui::history_keys(ui, &addr, self.history.len(), at)
-                {
-                    self.address = self.history[i].clone();
-                    self.error = None;
-                }
-                // While its list is open, Escape closes the list and the box keeps the keys.
-                winui::keep_keys(ui, &addr, false, true, self.list_open);
-                let list_was_open = self.list_open;
-                if self.list_open
-                    && let Some(i) = winui::drop_list(
+                    winui::fit(
                         ui,
-                        "add-url-history",
-                        addr_rc,
-                        &self.history,
-                        crate::i18n::t("No addresses yet"),
-                        &mut self.list_open,
-                    )
-                {
-                    self.address = self.history[i].clone();
-                    addr.request_focus();
-                }
-                // Enter presses the default button (OK), as in IDM, wherever the focus is.
-                let _ = &addr;
-                let enter = winui::enter_pressed(ui);
-                let label = if self.auth {
-                    winui::TEXT()
-                } else {
-                    winui::TEXT_DISABLED()
-                };
-                let (ok, cancel) = if mac {
-                    winui::checkbox(
-                        ui,
-                        o + vec2(20.0, 72.0),
-                        &mut self.auth,
-                        "Use authorization",
-                        true,
-                    );
-                    // i18n: noun: the user name and password section
-                    winui::text(&p, o.x + 20.0, o.y + 112.0, crate::i18n::t("Login"), label);
-                    winui::edit(
-                        ui,
-                        r(o, 76.0, 97.0, 180.0, 24.0),
-                        &mut self.login,
-                        self.auth,
-                        false,
-                    );
-                    winui::text(
                         &p,
-                        o.x + 276.0,
-                        o.y + 112.0,
-                        crate::i18n::t("Password"),
-                        label,
+                        o.x + 20.0,
+                        o.y + 136.0,
+                        e,
+                        red,
+                        o.x + 290.0,
+                        "add-url-error",
                     );
-                    winui::edit(
-                        ui,
-                        r(o, 344.0, 97.0, 156.0, 24.0),
-                        &mut self.password,
-                        self.auth,
-                        true,
-                    );
-                    let cancel = winui::button(
-                        ui,
-                        r(o, 306.0, 146.0, 92.0, 24.0),
-                        "Cancel",
-                        ButtonKind::Normal,
-                        false,
-                        None,
-                    )
-                    .clicked();
-                    let ok = winui::button(
-                        ui,
-                        r(o, 408.0, 146.0, 92.0, 24.0),
-                        "OK",
-                        ButtonKind::Default,
-                        false,
-                        None,
-                    )
-                    .clicked();
-                    (ok, cancel)
                 } else {
-                    winui::group_box(
+                    // Ends before the OK / Cancel buttons; whole on hover when cut.
+                    // On the group box's top line, over a strip of the dialog's colour (as a
+                    // caption sits on its line), not struck through by it.
+                    let w = winui::text_width(&p, e).min(465.0 - 140.0) + 6.0;
+                    winui::fill_l(
                         &p,
-                        r(o, 11.0, 45.0, 453.0, 40.0),
-                        Some(winui::caption_gap(
-                            &p,
-                            o.x + 20.0,
-                            o.x + 124.0,
-                            "Use authorization",
-                            false,
-                        )),
+                        o.x + 137.0,
+                        o.y + 39.0,
+                        o.x + 137.0 + w,
+                        o.y + 52.0,
+                        winui::BG(),
                     );
-                    winui::checkbox(
+                    winui::fit(
                         ui,
-                        o + vec2(20.0, 39.0),
-                        &mut self.auth,
-                        "Use authorization",
-                        true,
-                    );
-                    winui::text(&p, o.x + 84.0, o.y + 69.0, crate::i18n::t("Login"), label);
-                    winui::edit(
-                        ui,
-                        r(o, 116.0, 55.0, 117.0, 23.0),
-                        &mut self.login,
-                        self.auth,
-                        false,
-                    );
-                    winui::text(
                         &p,
-                        o.x + 289.0,
-                        o.y + 69.0,
-                        crate::i18n::t("Password"),
-                        label,
+                        o.x + 140.0,
+                        o.y + 49.0,
+                        e,
+                        red,
+                        o.x + 465.0,
+                        "add-url-error",
                     );
-                    winui::edit(
-                        ui,
-                        r(o, 342.0, 55.0, 113.0, 23.0),
-                        &mut self.password,
-                        self.auth,
-                        true,
-                    );
-                    let ok = winui::button(
-                        ui,
-                        r(o, 475.0, 12.0, 79.0, 19.0),
-                        "OK",
-                        ButtonKind::Default,
-                        false,
-                        None,
-                    )
-                    .clicked();
-                    let cancel = winui::button(
-                        ui,
-                        r(o, 475.0, 40.0, 79.0, 21.0),
-                        "Cancel",
-                        ButtonKind::Normal,
-                        false,
-                        None,
-                    )
-                    .clicked();
-                    (ok, cancel)
-                };
-                if let Some(e) = &self.error {
-                    let red = winui::ERROR();
-                    if mac {
-                        winui::fit(
-                            ui,
-                            &p,
-                            o.x + 20.0,
-                            o.y + 136.0,
-                            e,
-                            red,
-                            o.x + 290.0,
-                            "add-url-error",
-                        );
-                    } else {
-                        // Ends before the OK / Cancel buttons; whole on hover when cut.
-                        // On the group box's top line, over a strip of the dialog's colour (as a
-                        // caption sits on its line), not struck through by it.
-                        let w = winui::text_width(&p, e).min(465.0 - 140.0) + 6.0;
-                        winui::fill_l(
-                            &p,
-                            o.x + 137.0,
-                            o.y + 39.0,
-                            o.x + 137.0 + w,
-                            o.y + 52.0,
-                            winui::BG(),
-                        );
-                        winui::fit(
-                            ui,
-                            &p,
-                            o.x + 140.0,
-                            o.y + 49.0,
-                            e,
-                            red,
-                            o.x + 465.0,
-                            "add-url-error",
-                        );
+                }
+            }
+            // Escape closes an open drop list first, then the dialog.
+            if cancel || (!list_was_open && winui::escape_pressed(ui)) {
+                return Outcome::Closed;
+            }
+            if ok || (enter && !list_was_open) {
+                match crate::model::parse_address(&self.address) {
+                    Ok(url) if mdm_engine::supported(&url) || url.scheme() == "magnet" => {
+                        return Outcome::Done(NewUrl {
+                            url,
+                            login: self
+                                .auth
+                                .then(|| (self.login.clone(), self.password.clone())),
+                        });
                     }
+                    _ => self.error = Some(crate::i18n::t("Invalid address").into()),
                 }
-                // Escape closes an open drop list first, then the dialog.
-                if cancel || (!list_was_open && winui::escape_pressed(ui)) {
-                    return Outcome::Closed;
-                }
-                if ok || (enter && !list_was_open) {
-                    match crate::model::parse_address(&self.address) {
-                        Ok(url) if mdm_engine::supported(&url) || url.scheme() == "magnet" => {
-                            return Outcome::Done(NewUrl {
-                                url,
-                                login: self
-                                    .auth
-                                    .then(|| (self.login.clone(), self.password.clone())),
-                            });
-                        }
-                        _ => self.error = Some(crate::i18n::t("Invalid address").into()),
-                    }
-                }
-                Outcome::Open
-            },
-        )
+            }
+            Outcome::Open
+        };
+        if mac {
+            window_raw(
+                ctx,
+                "add-url",
+                "Enter new address to download",
+                client,
+                false,
+                winui::BG(),
+                body,
+            )
+        } else {
+            window(
+                ctx,
+                "add-url",
+                "Enter new address to download",
+                client,
+                false,
+                winui::BG(),
+                body,
+            )
+        }
     }
 }
 
@@ -1649,7 +1755,7 @@ impl Complete {
             true,
             winui::BG(),
             !self.seen,
-            |ui, o| {
+            |ui: &mut Ui, o: Pos2| {
                 let p = ui.painter().clone();
                 // The system's open folder (IDM shows one here): the shared file icons'.
                 crate::fileicons::paint_at(
@@ -1859,7 +1965,7 @@ impl SpeedSettings {
             [453.0, 197.0 + extra],
             false,
             winui::LIGHT_BG(),
-            |ui, o| {
+            |ui: &mut Ui, o: Pos2| {
                 let p = ui.painter().clone();
                 let black = winui::LIGHT_TEXT();
                 // The label ends where `text_right(265)` ended it: at 266.
@@ -2324,100 +2430,113 @@ impl ConfirmDelete {
     pub fn show(&mut self, ctx: &egui::Context) -> Outcome<(bool, bool)> {
         let n = self.ids.len() as u64;
         let extra = grow_extra(ctx, "confirm-delete");
-        question(
-            ctx,
-            "confirm-delete",
-            "Confirm deletion of downloads",
-            [374.0, 146.0 + extra],
-            false,
-            winui::LIGHT_BG(),
-            |ui, o| {
-                let p = ui.painter().clone();
-                let black = winui::LIGHT_TEXT();
-                let text = if n == 1 && self.unfinished {
-                    crate::i18n::t(
-                        "The selected download is not complete. Are you sure you want to delete
+        // The macOS layout keeps its own margins (question_raw): no pad is added.
+        let body = |ui: &mut Ui, o: Pos2| {
+            let p = ui.painter().clone();
+            let black = winui::LIGHT_TEXT();
+            let text = if n == 1 && self.unfinished {
+                crate::i18n::t(
+                    "The selected download is not complete. Are you sure you want to delete
 it from Mister Download Manager list of downloads?",
-                    )
-                    .to_owned()
-                } else if n == 1 {
-                    // The whole name (two similar names must stay apart): the box grows.
-                    let name = self.name.clone();
-                    crate::i18n::fmt(
-                        crate::i18n::t(
-                            "Are you sure you want to delete \"{name}\" from Mister Download Manager list of downloads?",
-                        ),
-                        // A file name keeps its own direction (an Arabic one reads right to left).
-                        &[("name", &crate::i18n::isolate(&name))],
-                    )
-                } else {
-                    // Two or more (one download has its own sentences above); the singular form
-                    // is for languages whose "one" form also counts 21, 31…
-                    crate::i18n::fmt(
-                        // i18n: never shown for a single download
-                        &crate::i18n::tn(
-                            n,
-                            "Are you sure you want to delete {n} download from Mister Download Manager list of downloads?",
-                            "Are you sure you want to delete these {n} downloads from Mister Download Manager list of downloads?",
-                        ),
-                        &[("n", &crate::i18n::integer(n))],
-                    )
-                };
-                let lines =
-                    winui::paragraph(&p, o.x + 11.0, o.y + 21.0, &text, black, o.x + 362.0, 13.0);
-                grow_to(ui.ctx(), "confirm-delete", lines, 3);
-                let o = o + vec2(0.0, extra);
-                let files = if n == 1 {
-                    crate::i18n::t("Also delete the file from disk").to_owned()
-                } else {
-                    crate::i18n::fmt(
-                        // i18n: never shown for a single file
-                        &crate::i18n::tn(
-                            n,
-                            "Also delete the {n} file from disk",
-                            "Also delete the {n} files from disk",
-                        ),
-                        &[("n", &crate::i18n::integer(n))],
-                    )
-                };
-                let mac = cfg!(target_os = "macos");
-                if mac {
-                    winui::checkbox_light(ui, o + vec2(16.0, 52.0), &mut self.files, &files, true);
-                } else {
-                    winui::checkbox_light(ui, o + vec2(24.0, 60.0), &mut self.files, &files, true);
-                }
-                let (yes_rc, no_rc) = if mac {
-                    (
-                        r(o, 266.0, 108.0, 92.0, 24.0),
-                        r(o, 164.0, 108.0, 92.0, 24.0),
-                    )
-                } else {
-                    (r(o, 94.0, 86.0, 73.0, 21.0), r(o, 207.0, 86.0, 73.0, 21.0))
-                };
-                let yes =
-                    winui::button_light(ui, yes_rc, "Yes", ButtonKind::Default, false).clicked();
-                let no = winui::button_light(ui, no_rc, "No", ButtonKind::Normal, false).clicked();
-                let dont_rc = if mac {
-                    o + vec2(16.0, 82.0)
-                } else {
-                    o + vec2(24.0, 120.0)
-                };
-                winui::checkbox_light(
-                    ui,
-                    dont_rc,
-                    &mut self.dont_show,
-                    "Don't show this dialog again",
-                    true,
-                );
-                if no || winui::escape_pressed(ui) {
-                    Outcome::Closed
-                } else if yes || winui::enter_pressed(ui) {
-                    Outcome::Done((self.files, self.dont_show))
-                } else {
-                    Outcome::Open
-                }
-            },
-        )
+                )
+                .to_owned()
+            } else if n == 1 {
+                // The whole name (two similar names must stay apart): the box grows.
+                let name = self.name.clone();
+                crate::i18n::fmt(
+                    crate::i18n::t(
+                        "Are you sure you want to delete \"{name}\" from Mister Download Manager list of downloads?",
+                    ),
+                    // A file name keeps its own direction (an Arabic one reads right to left).
+                    &[("name", &crate::i18n::isolate(&name))],
+                )
+            } else {
+                // Two or more (one download has its own sentences above); the singular form
+                // is for languages whose "one" form also counts 21, 31…
+                crate::i18n::fmt(
+                    // i18n: never shown for a single download
+                    &crate::i18n::tn(
+                        n,
+                        "Are you sure you want to delete {n} download from Mister Download Manager list of downloads?",
+                        "Are you sure you want to delete these {n} downloads from Mister Download Manager list of downloads?",
+                    ),
+                    &[("n", &crate::i18n::integer(n))],
+                )
+            };
+            let lines =
+                winui::paragraph(&p, o.x + 11.0, o.y + 21.0, &text, black, o.x + 362.0, 13.0);
+            grow_to(ui.ctx(), "confirm-delete", lines, 3);
+            let o = o + vec2(0.0, extra);
+            let files = if n == 1 {
+                crate::i18n::t("Also delete the file from disk").to_owned()
+            } else {
+                crate::i18n::fmt(
+                    // i18n: never shown for a single file
+                    &crate::i18n::tn(
+                        n,
+                        "Also delete the {n} file from disk",
+                        "Also delete the {n} files from disk",
+                    ),
+                    &[("n", &crate::i18n::integer(n))],
+                )
+            };
+            let mac = cfg!(target_os = "macos");
+            if mac {
+                winui::checkbox_light(ui, o + vec2(16.0, 52.0), &mut self.files, &files, true);
+            } else {
+                winui::checkbox_light(ui, o + vec2(24.0, 60.0), &mut self.files, &files, true);
+            }
+            let (yes_rc, no_rc) = if mac {
+                (
+                    r(o, 266.0, 108.0, 92.0, 24.0),
+                    r(o, 164.0, 108.0, 92.0, 24.0),
+                )
+            } else {
+                (r(o, 94.0, 86.0, 73.0, 21.0), r(o, 207.0, 86.0, 73.0, 21.0))
+            };
+            let yes = winui::button_light(ui, yes_rc, "Yes", ButtonKind::Default, false).clicked();
+            let no = winui::button_light(ui, no_rc, "No", ButtonKind::Normal, false).clicked();
+            let dont_rc = if mac {
+                o + vec2(16.0, 82.0)
+            } else {
+                o + vec2(24.0, 120.0)
+            };
+            winui::checkbox_light(
+                ui,
+                dont_rc,
+                &mut self.dont_show,
+                "Don't show this dialog again",
+                true,
+            );
+            if no || winui::escape_pressed(ui) {
+                Outcome::Closed
+            } else if yes || winui::enter_pressed(ui) {
+                Outcome::Done((self.files, self.dont_show))
+            } else {
+                Outcome::Open
+            }
+        };
+        if cfg!(target_os = "macos") {
+            question_raw(
+                ctx,
+                "confirm-delete",
+                "Confirm deletion of downloads",
+                [374.0, 146.0 + extra],
+                false,
+                winui::LIGHT_BG(),
+                body,
+            )
+        } else {
+            question(
+                ctx,
+                "confirm-delete",
+                "Confirm deletion of downloads",
+                [374.0, 146.0 + extra],
+                false,
+                winui::LIGHT_BG(),
+                body,
+            )
+        }
     }
 }
 

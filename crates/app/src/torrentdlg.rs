@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use egui::{Color32, Pos2, Rect, Stroke, Ui, pos2, vec2};
 use mdm_torrent::{Lookup, LookupStatus, Meta, Source};
 
-use crate::dialogs::{Outcome, window};
+use crate::dialogs::{Outcome, window_raw};
 use crate::model::{Category, category_folder};
 use crate::torrents::Host;
 // `fill` takes English pixels (made where they are on screen), `text` an English pen.
@@ -444,7 +444,7 @@ impl TorrentDialog {
                 Err(e) => self.error = Some(e),
             }
         }
-        let out = window(
+        let out = window_raw(
             ctx,
             "add-torrent",
             "Add torrent",
@@ -1140,7 +1140,7 @@ impl TorrentSettings {
     }
 
     pub fn show(&mut self, ctx: &egui::Context) -> Outcome<TorrentChoice> {
-        window(
+        window_raw(
             ctx,
             "torrent-settings",
             "Torrent settings",
@@ -1528,7 +1528,7 @@ impl AddTrackers {
     }
 
     pub fn show(&mut self, ctx: &egui::Context) -> Outcome<Vec<String>> {
-        window(
+        window_raw(
             ctx,
             "add-trackers",
             "Add trackers",
