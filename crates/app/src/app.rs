@@ -977,6 +977,20 @@ impl App {
             settings.language = (code != crate::i18n::system_code()).then_some(code);
             settings.language_asked = true;
         }
+        // This fork's macOS build speaks Chinese out of the box: no first-start language
+        // picker, and Simplified Chinese unless another language was chosen (Options →
+        // Language still switches, and that choice is kept). Settings changed here are saved
+        // on the first tick (the list itself needs no save).
+        #[allow(unused_mut)]
+        let mut settled_language = false;
+        #[cfg(target_os = "macos")]
+        if !settings.language_asked {
+            settings.language_asked = true;
+            settled_language = true;
+            if settings.language.is_none() {
+                settings.language = Some("zh-hans".to_owned());
+            }
+        }
         let ask_language = !settings.language_asked;
         crate::i18n::set_lang(settings.language.as_deref());
         crate::theme::language_fonts(ctx);
@@ -1186,7 +1200,7 @@ impl App {
             duplicates_waiting: Default::default(),
             duplicate_cleared: false,
             downloads,
-            dirty: false,
+            dirty: settled_language,
             secrets_confirmed: 0,
             last_save: Instant::now(),
             saver: store::Saver::new(),
