@@ -288,12 +288,14 @@ impl App {
             }
             response.on_hover_text(crate::MAIN_TITLE);
             ui.add_space(7.0);
-            ui.label(
-                RichText::new("Mister")
-                    .size(15.0)
-                    .strong()
-                    .color(colors.text),
-            );
+            // The whole name (it read "Mister"): as wide as the sidebar can show, with the
+            // rest in the tooltip when a long translation has to be shortened.
+            let name = crate::i18n::t("Mister Download Manager");
+            let room = (rect.width() - 24.0 - 26.0 - 7.0).max(60.0);
+            let font = FontId::proportional(13.5);
+            let shown = winui::ellipsize(ui.painter(), &font, name, room);
+            let response = ui.label(RichText::new(shown).size(13.5).strong().color(colors.text));
+            response.on_hover_text(name);
         });
         side.add_space(18.0);
 
@@ -609,18 +611,19 @@ impl App {
             chart_painter.add(egui::Shape::mesh(mesh));
             chart_painter.add(egui::Shape::line(points, Stroke::new(1.6, colors.accent)));
         } else {
-            // No traffic: say so in the chart's place, over its foot, rather than leave a
-            // hole between the figure and the footer.
+            // No traffic: an empty chart keeps its foot, and "Idle" sits at the card's top
+            // right, on the figure's baseline (aligned with the rate it belongs to) rather
+            // than in the middle of the plot area.
             p.line_segment(
                 [chart.left_bottom(), chart.right_bottom()],
                 Stroke::new(1.0, blend(colors.sidebar, colors.border, 0.7)),
             );
             p.text(
-                chart.center(),
-                Align2::CENTER_CENTER,
+                pos2(right, base),
+                Align2::RIGHT_BOTTOM,
                 // i18n: the sidebar speed chart while nothing is downloading
                 crate::i18n::t("Idle"),
-                FontId::proportional(10.5),
+                FontId::proportional(11.0),
                 colors.subtle,
             );
         }
