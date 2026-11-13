@@ -683,30 +683,6 @@ impl App {
                 .color(colors.subtle),
         );
 
-        // Resume means "continue what is in front of me": the selected downloads when there is
-        // a selection, and otherwise what the current view shows. It used to start every
-        // resumable download in the model, including the ones the user had filtered away (#A6).
-        let resume: Vec<u64> = {
-            let visible: Vec<u64> = rows.iter().map(|row| row.id).collect();
-            let scoped: Vec<u64> = if self.selection.ids().is_empty() {
-                visible
-            } else {
-                visible
-                    .into_iter()
-                    .filter(|id| self.selection.contains(*id))
-                    .collect()
-            };
-            let ids: Vec<u64> = scoped
-                .into_iter()
-                .filter(|id| {
-                    self.items
-                        .iter()
-                        .any(|item| item.id == *id && item.can_start())
-                })
-                .collect();
-            ids
-        };
-
         header.with_layout(Layout::right_to_left(Align::Center), |ui| {
             let more = menu_button(ui, colors);
             if more.clicked() {
@@ -747,7 +723,6 @@ impl App {
                 egui::TextEdit::singleline(&mut self.mac_search)
                     .id(egui::Id::unique("macos-main-search"))
                     .frame(egui::Frame::NONE)
-                    .hint_text(crate::i18n::t("Search:"))
                     .desired_width(f32::INFINITY),
             );
             if search.changed() {
@@ -755,17 +730,6 @@ impl App {
             }
             ui.add_space(6.0);
 
-            let any_running = self.items.iter().any(|item| item.live.is_some());
-            if icon_button(ui, Icon::Stop, any_running, colors, "Stop All").clicked() {
-                *chosen = Some((Cmd::StopAll, None));
-            }
-            ui.add_space(2.0);
-            if icon_button(ui, Icon::Resume, !resume.is_empty(), colors, "Resume").clicked() {
-                for id in resume {
-                    self.start(id, false);
-                }
-            }
-            ui.add_space(2.0);
             let torrent = icon_button(ui, Icon::AddTorrent, true, colors, "Open torrent file");
             if torrent.clicked() {
                 *chosen = Some((Cmd::OpenTorrentFile, None));

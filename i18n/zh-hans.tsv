@@ -50,7 +50,6 @@ menu	&Find	查找(&F)
 	Progress	进度
 #. text in macos_main.rs
 	Queue	队列
-	Stop All	全部停止
 @plural	and {n} other file|and {n} other files	以及其他 {n} 个文件
 #. count in a download's progress window
 #. a connection closed because the server allows only that many
@@ -6054,7 +6053,6 @@ menu	&Paste	粘贴(&P)
 #. menu command in the main window
 #. & marks the keyboard shortcut letter: keep one & before a letter of the translation
 #, machine
-menu	&Pause All	暂停所有(&P)
 #. menu command in the main window
 #. verb: removes the selected download from the list
 #. & marks the keyboard shortcut letter: keep one & before a letter of the translation

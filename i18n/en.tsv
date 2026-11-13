@@ -2589,7 +2589,7 @@
 #. text in a download's Properties window
 #. {result} = how the last attempt ended (a status or an error message)
 	Result: {result}	Result: {result}
-#. text in macos_main.rs; text in a download's progress window
+#. text in a download's progress window
 #. verb: continue the download
 	Resume	Resume
 #. text in a download's progress window
@@ -2687,7 +2687,7 @@
 #. noun: the tool that starts and stops queues on time
 #. noun: opens the Scheduler (the tool that starts queues on time)
 	Scheduler	Scheduler
-#. text in macos_main.rs; text in langpick.rs
+#. text in langpick.rs
 	Search:	Search:
 #. text in the Batch download window
 	Second file:	Second file:
@@ -2995,8 +2995,6 @@
 #. text in remote.rs; text in the Add torrent window
 #. remote control page (on a phone): button: stop a queue
 	Stop	Stop
-#. text in macos_main.rs
-	Stop All	Stop All
 #. text in the Scheduler window; checkbox in the Scheduler window
 	Stop download at	Stop download at
 #. text in playlistdlg.rs
